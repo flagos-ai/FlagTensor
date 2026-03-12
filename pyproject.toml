@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flagtensor"
+version = "0.1.0"
+description = "Triton operators benchmarked against cuTensor baselines"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "torch>=2.2.0",
+    "triton>=3.3.0",
+    "pytest>=7.1.0",
+    "matplotlib>=3.7.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,10 @@
+import torch
+
+DEFAULT_BENCHMARK_DTYPES = [torch.float16, torch.float32]
+DEFAULT_CORRECTNESS_DTYPES = [torch.float16, torch.float32, torch.float64]
+DEFAULT_IDENTITY_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
+DEFAULT_IDENTITY_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
+DEFAULT_SQRT_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
+DEFAULT_SQRT_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
+DEFAULT_WARMUP = 50
+DEFAULT_REPETITIONS = 100
