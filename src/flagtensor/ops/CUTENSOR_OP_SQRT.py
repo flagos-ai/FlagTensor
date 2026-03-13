@@ -10,10 +10,16 @@ from flagtensor import runtime
     key=["n_elements"],
 )
 @triton.jit
-def _sqrt_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _sqrt_kernel(
+    x_ptr,
+    y_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCKS_PER_PROGRAM: tl.constexpr,
+):
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
+    offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
     y = tl.sqrt(x.to(tl.float32))
@@ -27,6 +33,8 @@ def sqrt(x: torch.Tensor) -> torch.Tensor:
         return torch.sqrt(x)
     y = torch.empty_like(x)
     n_elements = y.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (
+        triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
+    )
     _sqrt_kernel[grid](x, y, n_elements)
     return y

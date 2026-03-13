@@ -7,9 +7,29 @@ CUDA_R_16F = 2
 CUDA_R_32F = 0
 CUDA_R_64F = 1
 CUDA_R_16BF = 14
+CUDA_C_32F = 4
+CUDA_C_64F = 5
 
 CUTENSOR_OP_IDENTITY = 1
 CUTENSOR_OP_SQRT = 2
+CUTENSOR_OP_RELU = 8
+CUTENSOR_OP_CONJ = 9
+CUTENSOR_OP_RCP = 10
+CUTENSOR_OP_SIGMOID = 11
+CUTENSOR_OP_TANH = 12
+CUTENSOR_OP_ABS = 24
+CUTENSOR_OP_NEG = 25
+CUTENSOR_OP_SIN = 26
+CUTENSOR_OP_COS = 27
+CUTENSOR_OP_TAN = 28
+CUTENSOR_OP_SINH = 29
+CUTENSOR_OP_COSH = 30
+CUTENSOR_OP_ASIN = 31
+CUTENSOR_OP_ACOS = 32
+CUTENSOR_OP_ATAN = 33
+CUTENSOR_OP_ASINH = 34
+CUTENSOR_OP_ACOSH = 35
+CUTENSOR_OP_ATANH = 36
 CUTENSOR_ALGO_DEFAULT = -1
 CUTENSOR_JIT_MODE_NONE = 0
 CUTENSOR_WORKSPACE_DEFAULT = 2
@@ -135,6 +155,10 @@ class CuTensorUnary:
             return CUDA_R_64F
         if dtype == torch.bfloat16:
             return CUDA_R_16BF
+        if dtype == torch.complex64:
+            return CUDA_C_32F
+        if dtype == torch.complex128:
+            return CUDA_C_64F
         raise TypeError(f"unsupported dtype: {dtype}")
 
     def _compute_desc(self, dtype):
@@ -146,9 +170,19 @@ class CuTensorUnary:
             return CUTENSOR_COMPUTE_DESC_64F
         if dtype == torch.bfloat16:
             return CUTENSOR_COMPUTE_DESC_32F
+        if dtype == torch.complex64:
+            return CUTENSOR_COMPUTE_DESC_32F
+        if dtype == torch.complex128:
+            return CUTENSOR_COMPUTE_DESC_64F
         raise TypeError(f"unsupported dtype: {dtype}")
 
     def _scalar_value(self, value, dtype):
+        if dtype == torch.complex64:
+            value = complex(value)
+            return (c_float * 2)(value.real, value.imag)
+        if dtype == torch.complex128:
+            value = complex(value)
+            return (c_double * 2)(value.real, value.imag)
         if dtype == torch.float64:
             return c_double(value)
         return c_float(value)
@@ -297,3 +331,93 @@ class CuTensorIdentity(CuTensorUnary):
 class CuTensorSqrt(CuTensorUnary):
     def __init__(self, dtype=torch.float32):
         super().__init__(CUTENSOR_OP_SQRT, dtype=dtype)
+
+
+class CuTensorRelu(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_RELU, dtype=dtype)
+
+
+class CuTensorConj(CuTensorUnary):
+    def __init__(self, dtype=torch.complex64):
+        super().__init__(CUTENSOR_OP_CONJ, dtype=dtype)
+
+
+class CuTensorRcp(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_RCP, dtype=dtype)
+
+
+class CuTensorSigmoid(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_SIGMOID, dtype=dtype)
+
+
+class CuTensorTanh(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_TANH, dtype=dtype)
+
+
+class CuTensorAbs(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_ABS, dtype=dtype)
+
+
+class CuTensorNeg(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_NEG, dtype=dtype)
+
+
+class CuTensorSin(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_SIN, dtype=dtype)
+
+
+class CuTensorCos(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_COS, dtype=dtype)
+
+
+class CuTensorTan(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_TAN, dtype=dtype)
+
+
+class CuTensorSinh(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_SINH, dtype=dtype)
+
+
+class CuTensorCosh(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_COSH, dtype=dtype)
+
+
+class CuTensorAsin(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_ASIN, dtype=dtype)
+
+
+class CuTensorAcos(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_ACOS, dtype=dtype)
+
+
+class CuTensorAtan(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_ATAN, dtype=dtype)
+
+
+class CuTensorAsinh(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_ASINH, dtype=dtype)
+
+
+class CuTensorAcosh(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_ACOSH, dtype=dtype)
+
+
+class CuTensorAtanh(CuTensorUnary):
+    def __init__(self, dtype=torch.float32):
+        super().__init__(CUTENSOR_OP_ATANH, dtype=dtype)
