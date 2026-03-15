@@ -1,9 +1,33 @@
+from .CUTENSOR_OP_ADD import add
+from .CUTENSOR_OP_ACOSH import acosh
+from .CUTENSOR_OP_ACOS import acos
+from .CUTENSOR_OP_ASIN import asin
+from .CUTENSOR_OP_ASINH import asinh
+from .CUTENSOR_OP_ATAN import atan
+from .CUTENSOR_OP_ATANH import atanh
+from .CUTENSOR_OP_CEIL import ceil
 from .CUTENSOR_OP_CONJ import conj
+from .CUTENSOR_OP_COS import cos
+from .CUTENSOR_OP_COSH import cosh
+from .CUTENSOR_OP_EXP import exp
+from .CUTENSOR_OP_FLOOR import floor
 from .CUTENSOR_OP_IDENTITY import identity
+from .CUTENSOR_OP_LOG import log
+from .CUTENSOR_OP_MISH import mish
+from .CUTENSOR_OP_MIN import min
+from .CUTENSOR_OP_MAX import max
+from .CUTENSOR_OP_MUL import mul
+from .CUTENSOR_OP_NEG import neg
 from .CUTENSOR_OP_RCP import rcp
 from .CUTENSOR_OP_RELU import relu
 from .CUTENSOR_OP_SIGMOID import sigmoid
+from .CUTENSOR_OP_SIN import sin
+from .CUTENSOR_OP_SINH import sinh
+from .CUTENSOR_OP_SOFT_PLUS import soft_plus
+from .CUTENSOR_OP_SOFT_SIGN import soft_sign
 from .CUTENSOR_OP_SQRT import sqrt
+from .CUTENSOR_OP_SWISH import swish
+from .CUTENSOR_OP_TAN import tan
 from .CUTENSOR_OP_TANH import tanh
 
-__all__ = ["identity", "sqrt", "relu", "conj", "rcp", "sigmoid", "tanh"]
+__all__ = ["add", "acosh", "acos", "asin", "asinh", "atan", "atanh", "ceil", "exp", "conj", "cos", "cosh", "floor", "identity", "log", "mish", "min", "max", "mul", "neg", "rcp", "relu", "sigmoid", "sin", "sinh", "soft_plus", "soft_sign", "sqrt", "swish", "tan", "tanh"]
