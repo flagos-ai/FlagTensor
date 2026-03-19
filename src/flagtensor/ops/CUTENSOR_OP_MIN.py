@@ -3,12 +3,17 @@ import triton
 import triton.language as tl
 
 from flagtensor import runtime
+from flagtensor.utils import libtuner
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("CUTENSOR_OP_MIN"),
+@libtuner(
+    configs=runtime.get_tuned_config("elementwise_binary"),
     key=["n_elements"],
+    strategy=["align32"],
+    warmup=5,
+    rep=10,
 )
+@triton.heuristics(runtime.get_heuristic_config("elementwise_binary"))
 @triton.jit
 def _min_kernel(
     x_ptr,
@@ -17,15 +22,25 @@ def _min_kernel(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
     BLOCKS_PER_PROGRAM: tl.constexpr,
+    KERNEL_ID: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
-    offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    z = tl.minimum(x, y)
-    tl.store(z_ptr + offsets, z, mask=mask)
+    if KERNEL_ID == 0:
+        offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        z = tl.minimum(x, y)
+        tl.store(z_ptr + offsets, z, mask=mask)
+    else:
+        for block_idx in tl.static_range(0, BLOCKS_PER_PROGRAM):
+            offsets = block_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < n_elements
+            x = tl.load(x_ptr + offsets, mask=mask)
+            y = tl.load(y_ptr + offsets, mask=mask)
+            z = tl.where(x < y, x, y)
+            tl.store(z_ptr + offsets, z, mask=mask)
 
 
 def min(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:

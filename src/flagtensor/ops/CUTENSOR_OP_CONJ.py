@@ -3,12 +3,17 @@ import triton
 import triton.language as tl
 
 from flagtensor import runtime
+from flagtensor.utils import libtuner
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("CUTENSOR_OP_CONJ"),
+@libtuner(
+    configs=runtime.get_tuned_config("elementwise_unary"),
     key=["n_elements"],
+    strategy=["align32"],
+    warmup=5,
+    rep=10,
 )
+@triton.heuristics(runtime.get_heuristic_config("elementwise_unary"))
 @triton.jit
 def _conj_kernel(
     x_ptr,
@@ -16,15 +21,25 @@ def _conj_kernel(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
     BLOCKS_PER_PROGRAM: tl.constexpr,
+    KERNEL_ID: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
-    offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-    mask = offsets < n_elements
-    real = tl.load(x_ptr + 2 * offsets, mask=mask)
-    imag = tl.load(x_ptr + 2 * offsets + 1, mask=mask)
-    tl.store(y_ptr + 2 * offsets, real, mask=mask)
-    tl.store(y_ptr + 2 * offsets + 1, -imag, mask=mask)
+    if KERNEL_ID == 0:
+        offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
+        mask = offsets < n_elements
+        real = tl.load(x_ptr + 2 * offsets, mask=mask)
+        imag = tl.load(x_ptr + 2 * offsets + 1, mask=mask)
+        tl.store(y_ptr + 2 * offsets, real, mask=mask)
+        tl.store(y_ptr + 2 * offsets + 1, -imag, mask=mask)
+    else:
+        for block_idx in tl.static_range(0, BLOCKS_PER_PROGRAM):
+            offsets = block_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < n_elements
+            real = tl.load(x_ptr + 2 * offsets, mask=mask)
+            imag = tl.load(x_ptr + 2 * offsets + 1, mask=mask)
+            tl.store(y_ptr + 2 * offsets, real, mask=mask)
+            tl.store(y_ptr + 2 * offsets + 1, 0 - imag, mask=mask)
 
 
 def conj(x: torch.Tensor) -> torch.Tensor:

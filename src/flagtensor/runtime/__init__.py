@@ -1,301 +1,44 @@
-import triton
+from . import backend
+from .backend.device import DeviceDetector
+from .configloader import ConfigLoader
 
-_TUNED_CONFIGS = {
-    "CUTENSOR_OP_ADD": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_MUL": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_MAX": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_MIN": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_IDENTITY": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_SQRT": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_RELU": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_CONJ": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_RCP": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_SIGMOID": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_TANH": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_ABS": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_EXP": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_LOG": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_NEG": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_SIN": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_COS": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_TAN": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_SINH": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_COSH": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_ASIN": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_ACOS": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_ATAN": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_ASINH": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_ACOSH": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_ATANH": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_CEIL": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_FLOOR": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_MISH": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_SWISH": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_SOFT_PLUS": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-    "CUTENSOR_OP_SOFT_SIGN": [
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 1}, num_warps=2),
-        triton.Config({"BLOCK_SIZE": 256, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 1}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 512, "BLOCKS_PER_PROGRAM": 2}, num_warps=4),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 1}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 2}, num_warps=8),
-        triton.Config({"BLOCK_SIZE": 1024, "BLOCKS_PER_PROGRAM": 4}, num_warps=8),
-    ],
-}
+config_loader = ConfigLoader()
+device = DeviceDetector()
+
+backend.set_torch_backend_device_fn(device.vendor_name)
+torch_device_fn = backend.gen_torch_device_object()
+torch_backend_device = backend.get_torch_backend_device_fn()
 
 
-def get_tuned_config(op_name: str):
-    if op_name not in _TUNED_CONFIGS:
-        raise KeyError(f"No tuned config registered for op: {op_name}")
-    return _TUNED_CONFIGS[op_name]
+def get_tuned_config(op_name):
+    return config_loader.get_tuned_config(op_name)
 
 
-__all__ = ["get_tuned_config"]
+def get_heuristic_config(op_name):
+    return config_loader.get_heuristics_config(op_name)
+
+
+def replace_customized_ops(_globals):
+    event = backend.BackendArchEvent()
+    arch_specialization_operators = event.get_arch_ops() if event.has_arch else None
+    backend_customization_operators = backend.get_current_device_extend_op(
+        device.vendor_name
+    )
+    if backend_customization_operators:
+        for fn_name, fn in backend_customization_operators:
+            _globals[fn_name] = fn
+    if arch_specialization_operators:
+        for fn_name, fn in arch_specialization_operators:
+            _globals[fn_name] = fn
+
+
+__all__ = [
+    'backend',
+    'config_loader',
+    'device',
+    'torch_device_fn',
+    'torch_backend_device',
+    'get_tuned_config',
+    'get_heuristic_config',
+    'replace_customized_ops',
+]
