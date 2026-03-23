@@ -3,3 +3,7 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+benchmark/results/
+test_results/
+src/flagtensor.egg-info/
+weekly_op_test.txt

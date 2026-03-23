@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>算子测试结果分析报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { text-align: center; color: white; margin-bottom: 40px; }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+            color: white;
+            padding: 20px 30px;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        .card-body { padding: 30px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        .stat-item {
+            background: linear-gradient(135deg, #f6f8fc 0%, #eef2f7 100%);
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        .stat-item:hover { transform: translateY(-5px); }
+        .stat-value { font-size: 2.5rem; font-weight: 700; color: #5a67d8; margin-bottom: 8px; }
+        .stat-value.success { color: #38a169; }
+        .stat-label { color: #718096; font-size: 0.95rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 15px 20px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f7fafc; font-weight: 600; color: #4a5568; text-transform: uppercase; font-size: 0.85rem; }
+        tr:hover { background: #f7fafc; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 500; }
+        .badge-success { background: #c6f6d5; color: #22543d; }
+        .badge-warning { background: #feebc8; color: #744210; }
+        .badge-danger { background: #fed7d7; color: #742a2a; }
+        .summary-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
+        .summary-item { text-align: center; padding: 20px; background: #f7fafc; border-radius: 10px; }
+        .summary-item .value { font-size: 1.8rem; font-weight: 700; color: #2d3748; }
+        .summary-item .label { font-size: 0.9rem; color: #718096; margin-top: 5px; }
+        .distribution-chart { display: flex; height: 40px; border-radius: 8px; overflow: hidden; margin: 20px 0; }
+        .dist-segment { display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.9rem; }
+        .dist-low { background: linear-gradient(90deg, #fc8181, #f56565); }
+        .dist-medium { background: linear-gradient(90deg, #f6ad55, #ed8936); }
+        .dist-high { background: linear-gradient(90deg, #68d391, #48bb78); }
+        .legend { display: flex; justify-content: center; gap: 30px; margin-top: 15px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #4a5568; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .env-info { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; }
+        .env-item { display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.9); }
+        .env-item svg { width: 18px; height: 18px; }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        .section-title { font-size: 1.1rem; color: #4a5568; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; }
+        .op-list { max-height: 400px; overflow-y: auto; }
+        .op-list::-webkit-scrollbar { width: 6px; }
+        .op-list::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
+        .op-list::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+        .footer { text-align: center; color: rgba(255,255,255,0.7); margin-top: 30px; font-size: 0.9rem; }
+        @media (max-width: 768px) {
+            .two-col { grid-template-columns: 1fr; }
+            .summary-box { grid-template-columns: repeat(2, 1fr); }
+        }
+        .failed-op:hover { background: #fed7d7; padding: 2px 4px; border-radius: 4px; }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        .modal-content {
+            background: #1a1a2e;
+            color: #eee;
+            margin: 3% auto;
+            padding: 20px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 1200px;
+            height: 85vh;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            position: relative;
+        }
+        .modal-close {
+            position: sticky;
+            top: 0;
+            float: right;
+            color: #fff;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            background: #c53030;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            line-height: 32px;
+            text-align: center;
+        }
+        .modal-close:hover { background: #e53e3e; }
+        .modal-title {
+            color: #68d391;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #4a5568;
+        }
+    </style>
+    <script>
+        function showLog(logId) {
+            var content = document.getElementById(logId).innerHTML;
+            var title = document.getElementById(logId).getAttribute('data-title') || '日志详情';
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-body').innerHTML = content;
+            document.getElementById('logModal').style.display = 'block';
+        }
+        function closeModal() {
+            document.getElementById('logModal').style.display = 'none';
+        }
+        window.onclick = function(event) {
+            var modal = document.getElementById('logModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+        document.onkeydown = function(evt) {
+            evt = evt || window.event;
+            if (evt.keyCode == 27) {
+                closeModal();
+            }
+        };
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>算子测试结果分析报告</h1>
+            <div class="env-info" style="margin-top: 20px;">
+                <div class="env-item">
+                    <svg fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>
+                    <span>results_20260318_101537</span>
+                </div>
+                <div class="env-item">
+                    <svg fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>
+                    <span>246 个算子</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">1. 概览</div>
+            <div class="card-body">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value">246</div>
+                        <div class="stat-label">总算子数量</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value success">242</div>
+                        <div class="stat-label">精度正确且有性能结果</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value success">0</div>
+                        <div class="stat-label">精度测试失败</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value success">0</div>
+                        <div class="stat-label">无精度测试用例</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value success">0</div>
+                        <div class="stat-label">无性能结果</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">2. 加速比统计</div>
+            <div class="card-body">
+                <div class="summary-box">
+                    <div class="summary-item">
+                        <div class="value">0.9951</div>
+                        <div class="label">中位数</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value">5.8650</div>
+                        <div class="label">平均值</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value">0.0413</div>
+                        <div class="label">最小值</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value">487.3876</div>
+                        <div class="label">最大值</div>
+                    </div>
+                </div>
+
+                <h3 class="section-title">加速比分布</h3>
+                <div class="distribution-chart">
+                    <div class="dist-segment dist-low" style="flex: 9.72762645914397;">9.7%</div>
+                    <div class="dist-segment dist-medium" style="flex: 41.63424124513619;">41.6%</div>
+                    <div class="dist-segment dist-high" style="flex: 48.63813229571984;">48.6%</div>
+                </div>
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-dot" style="background: #f56565;"></div><span>&lt; 0.8</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background: #ed8936;"></div><span>0.8 ~ 1.0</span></div>
+                    <div class="legend-item"><div class="legend-dot" style="background: #48bb78;"></div><span>&gt; 1.0</span></div>
+                </div>
+
+                <table style="margin-top: 30px;">
+                    <thead>
+                        <tr><th>区间</th><th>数量</th><th>占比</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><span class="badge badge-danger">&lt; 0.8</span></td><td>25</td><td>9.73%</td></tr>
+                        <tr><td><span class="badge badge-warning">0.8 ~ 1.0</span></td><td>107</td><td>41.63%</td></tr>
+                        <tr><td><span class="badge badge-success">&gt; 1.0</span></td><td>125</td><td>48.64%</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">加速比柱状图</div>
+            <div class="card-body">
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; align-items: center;">
+                    <div>
+                        <label style="font-size: 0.9rem; color: #4a5568; margin-right: 8px;">筛选:</label>
+                        <select id="filterRange" onchange="updateChart()" style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                            <option value="all">全部</option>
+                            <option value="below08">&lt; 0.8</option>
+                            <option value="between">0.8 ~ 1.0</option>
+                            <option value="above1">&gt; 1.0</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.9rem; color: #4a5568; margin-right: 8px;">排序:</label>
+                        <select id="sortOrder" onchange="updateChart()" style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                            <option value="name">按名称</option>
+                            <option value="asc">加速比升序</option>
+                            <option value="desc">加速比降序</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.9rem; color: #4a5568; margin-right: 8px;">Y轴上限:</label>
+                        <input type="number" id="yAxisMax" value="3" min="1" step="0.5" onchange="updateChart()" style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; width: 80px;">
+                    </div>
+                    <div style="flex: 1; min-width: 200px;">
+                        <input type="text" id="searchBox" placeholder="搜索算子名..." oninput="updateChart()" style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; width: 100%;">
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span id="chartInfo" style="font-size: 0.9rem; color: #718096;"></span>
+                    <div>
+                        <button onclick="prevPage()" style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; margin-right: 5px;">&lt; 上一页</button>
+                        <span id="pageInfo" style="font-size: 0.9rem; color: #4a5568; margin: 0 10px;"></span>
+                        <button onclick="nextPage()" style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer;">&gt; 下一页</button>
+                    </div>
+                </div>
+                <div style="height: 400px;">
+                    <canvas id="speedupChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="two-col">
+            <div class="card">
+                <div class="card-header">3. 需关注算子（加速比 &lt; 0.8）</div>
+                <div class="card-body">
+                    <div class="op-list">
+                        <table>
+                            <thead><tr><th>算子名</th><th>加速比</th></tr></thead>
+                            <tbody><tr><td>get_scheduler_metadata</td><td><span class="badge badge-danger">0.0413</span></td></tr>
+<tr><td>sort</td><td><span class="badge badge-danger">0.0965</span></td></tr>
+<tr><td>one_hot</td><td><span class="badge badge-danger">0.1090</span></td></tr>
+<tr><td>unique</td><td><span class="badge badge-danger">0.2151</span></td></tr>
+<tr><td>fill</td><td><span class="badge badge-danger">0.2786</span></td></tr>
+<tr><td>fill_</td><td><span class="badge badge-danger">0.2800</span></td></tr>
+<tr><td>index_add</td><td><span class="badge badge-danger">0.3285</span></td></tr>
+<tr><td>index_select</td><td><span class="badge badge-danger">0.3617</span></td></tr>
+<tr><td>nonzero</td><td><span class="badge badge-danger">0.3666</span></td></tr>
+<tr><td>index_add_</td><td><span class="badge badge-danger">0.3819</span></td></tr>
+<tr><td>flash_attention_forward</td><td><span class="badge badge-danger">0.4081</span></td></tr>
+<tr><td>quantile</td><td><span class="badge badge-danger">0.4177</span></td></tr>
+<tr><td>flash_attn_varlen_func</td><td><span class="badge badge-danger">0.6328</span></td></tr>
+<tr><td>normal_</td><td><span class="badge badge-danger">0.6558</span></td></tr>
+<tr><td>pow_</td><td><span class="badge badge-danger">0.7019</span></td></tr>
+<tr><td>atan_</td><td><span class="badge badge-danger">0.7543</span></td></tr>
+<tr><td>gelu_</td><td><span class="badge badge-danger">0.7701</span></td></tr>
+<tr><td>erf_</td><td><span class="badge badge-danger">0.7759</span></td></tr>
+<tr><td>atan</td><td><span class="badge badge-danger">0.7806</span></td></tr>
+<tr><td>cos_</td><td><span class="badge badge-danger">0.7877</span></td></tr>
+<tr><td>bitwise_or_</td><td><span class="badge badge-danger">0.7953</span></td></tr>
+<tr><td>sin_</td><td><span class="badge badge-danger">0.7961</span></td></tr>
+<tr><td>masked_fill_</td><td><span class="badge badge-danger">0.7979</span></td></tr>
+<tr><td>pow</td><td><span class="badge badge-danger">0.7983</span></td></tr>
+</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">4. 高性能算子（加速比 &gt; 2.0）</div>
+                <div class="card-body">
+                    <div class="op-list">
+                        <table>
+                            <thead><tr><th>算子名</th><th>加速比</th></tr></thead>
+                            <tbody><tr><td>flash_mla</td><td><span class="badge badge-success">487.3876</span></td></tr>
+<tr><td>concat_and_cache_mla</td><td><span class="badge badge-success">290.6484</span></td></tr>
+<tr><td>reshape_and_cache</td><td><span class="badge badge-success">207.5183</span></td></tr>
+<tr><td>reshape_and_cache_flash</td><td><span class="badge badge-success">171.0691</span></td></tr>
+<tr><td>per_token_group_quant_fp8</td><td><span class="badge badge-success">11.8884</span></td></tr>
+<tr><td>nll_loss2d</td><td><span class="badge badge-success">10.7866</span></td></tr>
+<tr><td>isclose</td><td><span class="badge badge-success">9.4630</span></td></tr>
+<tr><td>index_put_</td><td><span class="badge badge-success">8.9890</span></td></tr>
+<tr><td>apply_rotary_pos_emb</td><td><span class="badge badge-success">6.6981</span></td></tr>
+<tr><td>allclose</td><td><span class="badge badge-success">6.4660</span></td></tr>
+<tr><td>layer_norm</td><td><span class="badge badge-success">3.7836</span></td></tr>
+<tr><td>isin</td><td><span class="badge badge-success">3.7337</span></td></tr>
+<tr><td>cumsum</td><td><span class="badge badge-success">3.6223</span></td></tr>
+<tr><td>fused_add_rms_norm</td><td><span class="badge badge-success">3.5925</span></td></tr>
+<tr><td>softmax</td><td><span class="badge badge-success">3.3938</span></td></tr>
+<tr><td>isfinite</td><td><span class="badge badge-success">3.3466</span></td></tr>
+<tr><td>normal</td><td><span class="badge badge-success">3.3211</span></td></tr>
+<tr><td>logspace</td><td><span class="badge badge-success">3.2725</span></td></tr>
+<tr><td>instance_norm</td><td><span class="badge badge-success">3.1762</span></td></tr>
+<tr><td>count_nonzero</td><td><span class="badge badge-success">2.8994</span></td></tr>
+<tr><td>index_put</td><td><span class="badge badge-success">2.8930</span></td></tr>
+<tr><td>conv3d</td><td><span class="badge badge-success">2.8203</span></td></tr>
+<tr><td>topk</td><td><span class="badge badge-success">2.8025</span></td></tr>
+<tr><td>cummin</td><td><span class="badge badge-success">2.7889</span></td></tr>
+<tr><td>rwkv_ka_fusion</td><td><span class="badge badge-success">2.7781</span></td></tr>
+<tr><td>cummax</td><td><span class="badge badge-success">2.7669</span></td></tr>
+<tr><td>upsample_bicubic2d_aa</td><td><span class="badge badge-success">2.6975</span></td></tr>
+<tr><td>weight_norm</td><td><span class="badge badge-success">2.4129</span></td></tr>
+<tr><td>upsample_nearest3d</td><td><span class="badge badge-success">2.1795</span></td></tr>
+<tr><td>upsample_linear1d</td><td><span class="badge badge-success">2.1654</span></td></tr>
+<tr><td>group_norm</td><td><span class="badge badge-success">2.0235</span></td></tr>
+<tr><td>upsample_nearest2d</td><td><span class="badge badge-success">2.0063</span></td></tr>
+</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+
+        <div class="card">
+            <div class="card-header">5. 优化建议</div>
+            <div class="card-body">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div style="background: #fff5f5; border-left: 4px solid #fc8181; padding: 20px; border-radius: 8px;">
+                        <h4 style="color: #c53030; margin-bottom: 10px;">优先优化</h4>
+                        <p style="color: #742a2a; font-size: 0.95rem;"><strong>get_scheduler_metadata</strong> (0.04)<br><strong>sort</strong> (0.10)<br><strong>one_hot</strong> (0.11)<br><strong>unique</strong> (0.22)</p>
+                    </div>
+                    <div style="background: #fffff0; border-left: 4px solid #ecc94b; padding: 20px; border-radius: 8px;">
+                        <h4 style="color: #975a16; margin-bottom: 10px;">次优先优化</h4>
+                        <p style="color: #744210; font-size: 0.95rem;"><strong>fill</strong> (0.28)<br><strong>fill_</strong> (0.28)<br><strong>index_add</strong> (0.33)<br><strong>index_select</strong> (0.36)</p>
+                    </div>
+                    <div style="background: #f0fff4; border-left: 4px solid #68d391; padding: 20px; border-radius: 8px;">
+                        <h4 style="color: #276749; margin-bottom: 10px;">优势保持</h4>
+                        <p style="color: #22543d; font-size: 0.95rem;">
+                            48.6% 的算子获得性能提升，其中 32 个算子加速比超过 2 倍。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            报告生成时间: 2026-03-19 10:21:56
+        </div>
+    </div>
+
+    <!-- 日志弹窗 -->
+    <div id="logModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal()">&times;</span>
+            <div class="modal-title" id="modal-title">日志详情</div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script>
+        // 柱状图数据和控制
+        const allData = [["acos", 0.9123], ["abs_", 0.842214], ["abs", 0.955549], ["addmm", 1.014693], ["addcdiv", 0.917782], ["addcmul", 0.90969], ["add_", 0.817926], ["add", 0.927008], ["addr", 1.294345], ["all", 0.863715], ["apply_repetition_penalties", 1.37503], ["any", 0.870241], ["amax", 0.862823], ["argmax", 1.288361], ["arange", 1.778063], ["baddbmm", 0.998561], ["atan", 0.780638], ["angle", 1.596372], ["allclose", 6.466012], ["avg_pool2d", 1.020613], ["avg_pool2d_backward", 1.40708], ["addmv", 1.320332], ["atan_", 0.7543], ["bitwise_not", 0.957041], ["apply_rotary_pos_emb", 6.698097], ["argmin", 1.662727], ["bitwise_and_", 0.819599], ["ceil_", 0.845884], ["bitwise_and", 0.895812], ["bitwise_not_", 0.877201], ["bitwise_or_", 0.795317], ["cat", 1.147638], ["celu", 1.018228], ["bmm", 0.843771], ["bitwise_or", 0.90167], ["clamp", 0.922761], ["batch_norm", 1.965171], ["native_batch_norm_backward", 2.623411], ["bitwise_left_shift", 0.998179], ["clamp_min_", 1.005018], ["clamp_min", 1.003147], ["celu_", 0.924322], ["ceil", 0.942501], ["conv1d", 0.981495], ["count_nonzero", 2.899367], ["cos_", 0.787686], ["bitwise_right_shift", 1.00117], ["concat_and_cache_mla", 290.648391], ["diagonal_backward", 1.193478], ["cummax", 2.766929], ["copy_", 0.965998], ["clamp_", 0.847246], ["diag_embed", 1.061424], ["eq", 0.930325], ["div_", 1.236163], ["cutlass_scaled_mm", 0.940998], ["cos", 0.852425], ["embedding", 1.383245], ["embedding_backward", 1.83475], ["conv3d", 2.820308], ["exponential_", 0.979497], ["erf", 0.838042], ["cross_entropy_loss", 1.236943], ["diag", 1.185586], ["exp_", 0.843857], ["elu", 1.054074], ["elu_backward", 0.949409], ["conv2d", 1.047317], ["cumsum", 3.62226], ["div", 0.933353], ["fill", 0.2786], ["elu_", 0.938515], ["exp2", 0.944619], ["floor_divide", 0.906849], ["equal", 0.937112], ["dropout", 1.055693], ["cummin", 2.78886], ["full", 0.884856], ["flash_attn_varlen_func", 0.632834], ["exp2_", 0.845415], ["flip", 1.352062], ["eye", 1.383241], ["exp", 0.945826], ["dot", 1.295825], ["gelu", 0.825717], ["gelu_backward", 0.89039], ["gelu_and_mul", 1.189208], ["gather", 1.360338], ["gather_backward", 0.882939], ["hstack", 1.159277], ["erf_", 0.77593], ["index_add", 0.328544], ["gt", 0.92542], ["group_norm", 2.023542], ["floor_divide_", 0.867356], ["fill_", 0.279993], ["flash_mla", 487.387604], ["gelu_", 0.770101], ["isin", 3.733725], ["flash_attention_forward", 0.408114], ["full_like", 0.875891], ["ge", 0.929859], ["linspace", 1.465948], ["index", 1.242716], ["isclose", 9.46297], ["index_put_", 8.988979], ["fused_add_rms_norm", 3.592483], ["get_scheduler_metadata", 0.041313], ["isfinite", 3.346577], ["lerp", 0.908732], ["index_add_", 0.381883], ["grouped_topk", 1.116022], ["grouped_topk_no_renorm", 1.102695], ["instance_norm", 3.176151], ["glu", 1.080789], ["glu_backward", 1.069069], ["lerp_", 0.823133], ["isinf", 1.931212], ["index_select", 0.361692], ["logical_or_", 0.860237], ["le", 0.933158], ["logical_not", 0.890834], ["log", 0.857662], ["masked_select", 1.281821], ["masked_scatter", 1.411337], ["logical_or", 0.902449], ["index_put", 2.893048], ["minimum", 0.944696], ["moe_align_block_size_triton", 1.446647], ["layer_norm", 3.783622], ["logical_and_", 0.892759], ["masked_scatter_", 1.573287], ["isnan", 0.92168], ["ne", 0.92703], ["logical_xor", 0.893616], ["masked_fill_", 0.797864], ["one_hot", 0.108963], ["mm", 1.084058], ["log_sigmoid", 0.864389], ["max", 0.934767], ["min", 0.920414], ["pow_", 0.701858], ["nan_to_num", 0.934572], ["logspace", 3.27253], ["logical_and", 0.898626], ["mv", 1.084165], ["multinomial", 1.774006], ["moe_sum", 1.526192], ["reciprocal", 0.947191], ["normal_", 0.655815], ["masked_fill", 1.658736], ["kron", 0.983795], ["normal", 3.321121], ["neg", 0.947103], ["nonzero", 0.36659], ["mean", 1.188903], ["repeat_interleave.self_int", 1.200297], ["repeat_interleave.self_tensor", 0.205114], ["repeat_interleave.tensor", 1.102756], ["pow", 0.79831], ["log_softmax", 0.810954], ["polar", 0.897669], ["max_pool2d", 1.04705], ["max_pool2d_backward", 1.166947], ["ones", 1.002494], ["per_token_group_quant_fp8", 11.888428], ["mul_", 0.82029], ["randperm", 0.809863], ["lt", 0.929867], ["rwkv_ka_fusion", 2.778089], ["mse_loss", 1.6659], ["randn_like", 1.313693], ["prod", 0.81538], ["randn", 1.312609], ["nll_loss2d", 10.786551], ["maximum", 0.947092], ["sigmoid", 0.956071], ["repeat", 0.955455], ["neg_", 0.844482], ["reciprocal_", 0.846403], ["pad", 0.877655], ["slice_scatter", 1.701773], ["mul", 0.933586], ["ones_like", 0.997709], ["rsqrt_", 0.829063], ["remainder_", 0.860268], ["rand_like", 1.257156], ["remainder", 0.890118], ["select_scatter", 1.424589], ["nll_loss", 1.631091], ["quantile", 0.417707], ["sub", 0.927813], ["rsqrt", 0.92759], ["rms_norm", 0.95848], ["relu_", 0.845405], ["skip_layernorm", 1.903099], ["reshape_and_cache", 207.518319], ["threshold", 0.947942], ["scatter_add_", 1.143018], ["resolve_neg", 1.084515], ["rwkv_mm_sparsity", 1.355621], ["scatter_.reduce", 1.358244], ["scatter_.src", 1.356269], ["std", 0.989711], ["uniform_", 1.226399], ["sin_", 0.796063], ["sigmoid_", 0.855038], ["outer", 1.120163], ["scatter.reduce", 1.218133], ["scatter.src", 1.212693], ["sin", 0.860959], ["stack", 1.149375], ["tanh_", 0.827778], ["reshape_and_cache_flash", 171.069133], ["rand", 1.256627], ["silu_and_mul", 1.294322], ["sqrt_", 0.897251], ["tanh", 0.861434], ["vstack", 1.176785], ["softmax", 3.393814], ["softmax_backward", 1.737659], ["triu_", 1.005605], ["relu", 0.953781], ["scaled_dot_product_attention", 1.14841], ["tan_", 0.80477], ["sqrt", 0.995052], ["unfold_backward", 1.136421], ["resolve_conj", 0.971139], ["sub_", 0.81809], ["triu", 1.387212], ["silu", 0.935823], ["trace", 1.419119], ["tan", 0.869724], ["vdot", 1.081491], ["vector_norm", 1.115889], ["tile", 0.955362], ["softplus", 0.982737], ["topk_softmax", 1.151518], ["silu_", 1.063202], ["upsample_linear1d_align_False", 2.165424], ["upsample_linear1d_align_True", 2.167922], ["sum", 1.153509], ["upsample_nearest3d", 2.179479], ["unique", 0.215111], ["var_mean", 0.948994], ["to_copy", 1.08998], ["upsample_nearest2d", 2.006268], ["zeros_like", 1.003602], ["zeros", 0.9951], ["sort", 0.096492], ["topk", 2.802473], ["weight_norm", 2.412947], ["upsample_nearest1d", 1.71771], ["replication_pad3d", 1.999158], ["zero_", 1.005924], ["upsample_bicubic2d_aa", 2.697465], ["where", 0.903083]];
+        let filteredData = [];
+        let currentPage = 0;
+        const pageSize = 50;
+        let chart = null;
+
+        function filterAndSortData() {
+            const filterRange = document.getElementById('filterRange').value;
+            const sortOrder = document.getElementById('sortOrder').value;
+            const searchText = document.getElementById('searchBox').value.toLowerCase();
+
+            // 筛选
+            filteredData = allData.filter(item => {
+                const [name, speedup] = item;
+                // 搜索过滤
+                if (searchText && !name.toLowerCase().includes(searchText)) return false;
+                // 范围过滤
+                if (filterRange === 'below08' && speedup >= 0.8) return false;
+                if (filterRange === 'between' && (speedup < 0.8 || speedup > 1.0)) return false;
+                if (filterRange === 'above1' && speedup <= 1.0) return false;
+                return true;
+            });
+
+            // 排序
+            if (sortOrder === 'asc') {
+                filteredData.sort((a, b) => a[1] - b[1]);
+            } else if (sortOrder === 'desc') {
+                filteredData.sort((a, b) => b[1] - a[1]);
+            } else {
+                filteredData.sort((a, b) => a[0].localeCompare(b[0]));
+            }
+        }
+
+        function updateChart() {
+            filterAndSortData();
+            currentPage = 0;
+            renderChart();
+        }
+
+        function renderChart() {
+            const yAxisMax = parseFloat(document.getElementById('yAxisMax').value) || 3;
+            const start = currentPage * pageSize;
+            const end = Math.min(start + pageSize, filteredData.length);
+            const pageData = filteredData.slice(start, end);
+
+            const labels = pageData.map(item => item[0]);
+            const values = pageData.map(item => item[1]);
+            const displayValues = values.map(v => Math.min(v, yAxisMax));
+            const colors = values.map(v => {
+                if (v < 0.8) return 'rgba(245, 101, 101, 0.8)';
+                if (v <= 1.0) return 'rgba(237, 137, 54, 0.8)';
+                return 'rgba(72, 187, 120, 0.8)';
+            });
+
+            // 更新信息
+            document.getElementById('chartInfo').innerText = `共 ${filteredData.length} 个算子，当前显示 ${start + 1}-${end}`;
+            document.getElementById('pageInfo').innerText = `${currentPage + 1} / ${Math.ceil(filteredData.length / pageSize) || 1}`;
+
+            // 销毁旧图表
+            if (chart) chart.destroy();
+
+            // 创建新图表
+            const ctx = document.getElementById('speedupChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '加速比',
+                        data: displayValues,
+                        backgroundColor: colors,
+                        borderColor: colors.map(c => c.replace('0.8', '1')),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const realValue = values[context.dataIndex];
+                                    if (realValue > yAxisMax) {
+                                        return `加速比: ${realValue.toFixed(4)} (截断显示)`;
+                                    }
+                                    return `加速比: ${realValue.toFixed(4)}`;
+                                }
+                            }
+                        },
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: yAxisMax,
+                            title: { display: true, text: '加速比' }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45,
+                                font: { size: 10 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function prevPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                renderChart();
+            }
+        }
+
+        function nextPage() {
+            if ((currentPage + 1) * pageSize < filteredData.length) {
+                currentPage++;
+                renderChart();
+            }
+        }
+
+        // 初始化图表
+        document.addEventListener('DOMContentLoaded', updateChart);
+    </script>
+</body>
+</html>
