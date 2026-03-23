@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+import os
 from typing import Callable, Generator, List, Optional, Sequence, Tuple
 
 import torch
@@ -10,6 +11,52 @@ DEFAULT_SHAPES = [(2**i,) for i in range(10, 24)]
 DEFAULT_WARMUP = 50
 DEFAULT_REPETITIONS = 100
 DEFAULT_METRICS = ["latency", "latency_base", "speedup"]
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return int(value)
+
+
+def _env_shape_limit(default_shapes: Sequence[Tuple[int, ...]]) -> Sequence[Tuple[int, ...]]:
+    value = os.getenv("FLAGTENSOR_BENCHMARK_MAX_SHAPES")
+    if value is None or value == "":
+        return tuple(default_shapes)
+    limit = max(1, int(value))
+    return tuple(default_shapes[:limit])
+
+
+def _env_dtype_filter(default_dtypes: Sequence[torch.dtype]) -> Sequence[torch.dtype]:
+    value = os.getenv("FLAGTENSOR_BENCHMARK_DTYPES")
+    if value is None or value == "":
+        return tuple(default_dtypes)
+    aliases = {
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "half": torch.float16,
+        "float32": torch.float32,
+        "fp32": torch.float32,
+        "float64": torch.float64,
+        "fp64": torch.float64,
+        "double": torch.float64,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+        "complex64": torch.complex64,
+        "cfloat": torch.complex64,
+        "complex128": torch.complex128,
+        "cdouble": torch.complex128,
+    }
+    resolved = []
+    for item in value.split(","):
+        key = item.strip().lower()
+        if not key:
+            continue
+        dtype = aliases.get(key)
+        if dtype is not None and dtype in default_dtypes:
+            resolved.append(dtype)
+    return tuple(resolved or default_dtypes)
 
 
 @dataclass
@@ -37,6 +84,13 @@ class Benchmark:
     def __init__(self, op_name: str, config: Optional[BenchmarkConfig] = None):
         self.op_name = op_name
         self.config = config or BenchmarkConfig()
+        self.config = BenchmarkConfig(
+            warmup=_env_int("FLAGTENSOR_BENCHMARK_WARMUP", self.config.warmup),
+            repetitions=_env_int("FLAGTENSOR_BENCHMARK_REPETITIONS", self.config.repetitions),
+            dtypes=_env_dtype_filter(self.config.dtypes),
+            shapes=_env_shape_limit(self.config.shapes),
+            metrics=tuple(self.config.metrics),
+        )
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.cutensor_available = CUTENSOR_AVAILABLE
 

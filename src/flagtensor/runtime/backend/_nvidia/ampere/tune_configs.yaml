@@ -1,0 +1,33 @@
+elementwise_unary:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+
+elementwise_binary:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3

@@ -1,3 +1,4 @@
+from flagtensor import runtime
 from flagtensor.ops.CUTENSOR_OP_ADD import add
 from flagtensor.ops.CUTENSOR_OP_ABS import abs
 from flagtensor.ops.CUTENSOR_OP_ACOSH import acosh
@@ -32,3 +33,5 @@ from flagtensor.ops.CUTENSOR_OP_TAN import tan
 from flagtensor.ops.CUTENSOR_OP_TANH import tanh
 
 __all__ = ["add", "abs", "acosh", "acos", "asin", "asinh", "atan", "atanh", "ceil", "exp", "floor", "identity", "log", "mish", "min", "max", "mul", "soft_plus", "soft_sign", "sqrt", "relu", "conj", "cos", "cosh", "neg", "rcp", "sigmoid", "sin", "sinh", "swish", "tan", "tanh"]
+
+runtime.replace_customized_ops(globals())

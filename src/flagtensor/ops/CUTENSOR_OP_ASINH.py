@@ -1,41 +1,20 @@
 import torch
 import triton
 import triton.language as tl
-from triton.language.extra.cuda import libdevice
 
-from flagtensor import runtime
+from flagtensor.utils import make_unary_pointwise_from_family
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("CUTENSOR_OP_ASINH"),
-    key=["n_elements"],
-)
 @triton.jit
-def _asinh_kernel(
-    x_ptr,
-    y_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-    BLOCKS_PER_PROGRAM: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
-    offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = libdevice.asinh(x.to(tl.float32))
-    tl.store(y_ptr + offsets, y, mask=mask)
+def _asinh_scalar(x):
+    abs_x = tl.abs(x)
+    inner = abs_x + tl.sqrt(abs_x * abs_x + 1)
+    return tl.where(x >= 0, tl.log(inner), -tl.log(inner))
 
 
-def asinh(x: torch.Tensor) -> torch.Tensor:
-    if not x.is_cuda:
-        raise ValueError("input tensor must be on CUDA")
-    if x.dtype == torch.float64:
-        return torch.asinh(x)
-    y = torch.empty_like(x)
-    n_elements = y.numel()
-    grid = lambda meta: (
-        triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-    )
-    _asinh_kernel[grid](x, y, n_elements)
-    return y
+_asinh_kernel, asinh = make_unary_pointwise_from_family(
+    "asinh",
+    "asinh_like",
+    _asinh_scalar,
+    fallback_float64=torch.asinh,
+)
