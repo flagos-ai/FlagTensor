@@ -1,0 +1,39 @@
+# Operator list for tools/run_flagtensor_ci.py (--op-list)
+# One name per line; matches ctests/test_CUTENSOR_OP_<NAME>.py and
+# benchmark/test_CUTENSOR_OP_<NAME>_perf.py (case-insensitive).
+#
+# Example:
+#   python tools/run_flagtensor_ci.py --op-list tools/ci_op_list.txt --smoke
+#
+abs
+acos
+acosh
+add
+asin
+asinh
+atan
+atanh
+ceil
+conj
+cos
+cosh
+exp
+floor
+identity
+log
+max
+min
+mish
+mul
+neg
+rcp
+relu
+sigmoid
+sin
+sinh
+soft_plus
+soft_sign
+sqrt
+swish
+tan
+tanh
