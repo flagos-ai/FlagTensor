@@ -46,7 +46,7 @@ python tools/generate_flagtensor_html_report.py \
   --title "FlagTensor CI 测试报告"
 ```
 
-## 4. 跑单算子（排障常用）
+## 4. 跑单算子
 
 正确性：
 
@@ -73,11 +73,10 @@ tools/            CI/Weekly 脚本与报告生成
 
 ## 6. 新增算子最小流程
 
-1. 在 `src/flagtensor/ops/` 新增算子实现  
-2. 在 `src/flagtensor/__init__.py` 导出函数  
-3. 在 `ctests/` 加正确性测试  
-4. 在 `benchmark/` 加性能测试  
+1. 在 `src/flagtensor/ops/` 新增算子实现
+2. 在 `src/flagtensor/__init__.py` 导出函数
+3. 在 `ctests/` 加正确性测试
+4. 在 `benchmark/` 加性能测试
 
 ---
 
-如果你希望，我可以再给这份 README 增加一个“10 行内最小示例”（从创建输入到调用 `flagtensor.relu`）。  
