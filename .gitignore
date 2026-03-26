@@ -7,3 +7,4 @@ benchmark/results/
 test_results/
 src/flagtensor.egg-info/
 weekly_op_test.txt
+ci_results/
