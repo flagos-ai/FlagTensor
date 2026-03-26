@@ -73,6 +73,10 @@ tools/            CI/Weekly 脚本与报告生成
 
 ## 6. 新增算子最小流程
 
+## 授权许可
+
+本项目采用 [Apache (Version 2.0) license](./LICENSE) 许可证授权。
+
 1. 在 `src/flagtensor/ops/` 新增算子实现
 2. 在 `src/flagtensor/__init__.py` 导出函数
 3. 在 `ctests/` 加正确性测试
