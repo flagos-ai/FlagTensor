@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import json
 import os
 import shutil
+import statistics
 import subprocess
 import sys
 from pathlib import Path
@@ -40,6 +42,24 @@ def write_text(path: Path, content: str):
     path.write_text(content, encoding="utf-8")
 
 
+def load_speedup_stats(csv_path: Path):
+    if not csv_path.exists():
+        return {"avg_speedup": None, "max_speedup": None, "row_count": 0}
+    with csv_path.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    speedups = []
+    for row in rows:
+        value = row.get("speedup")
+        if value in (None, ""):
+            continue
+        speedups.append(float(value))
+    return {
+        "avg_speedup": statistics.mean(speedups) if speedups else None,
+        "max_speedup": max(speedups) if speedups else None,
+        "row_count": len(speedups),
+    }
+
+
 def load_ops(op=None, op_list=None):
     if op_list:
         lines = Path(op_list).read_text(encoding="utf-8").splitlines()
@@ -72,16 +92,21 @@ def write_markdown_summary(summary, results_dir: Path):
     lines = [
         "# FlagTensor CI Summary",
         "",
-        "| operator | correctness | perf | libtuner_cold | libtuner_warm |",
-        "| --- | --- | --- | --- | --- |",
+        "| operator | correctness | perf | avg_speedup | max_speedup | libtuner_cold | libtuner_warm |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for op in summary["ops"]:
         correctness = summary["correctness"].get(op, {}).get("status", "N/A")
-        performance = summary["performance"].get(op, {}).get("status", "N/A")
+        performance_info = summary["performance"].get(op, {})
+        performance = performance_info.get("status", "N/A")
+        avg_speedup = performance_info.get("avg_speedup")
+        max_speedup = performance_info.get("max_speedup")
         libtuner = summary["libtuner_compare"].get(op, {})
         cold = libtuner.get("cold", {}).get("status", "N/A")
         warm = libtuner.get("warm", {}).get("status", "N/A")
-        lines.append(f"| {op} | {correctness} | {performance} | {cold} | {warm} |")
+        avg_text = f"{avg_speedup:.6f}" if avg_speedup is not None else "N/A"
+        max_text = f"{max_speedup:.6f}" if max_speedup is not None else "N/A"
+        lines.append(f"| {op} | {correctness} | {performance} | {avg_text} | {max_text} | {cold} | {warm} |")
     (results_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -108,6 +133,7 @@ def run_correctness(op: str, results_dir: Path, env):
 
 def smoke_env(base_env, smoke: bool, dtypes=None, max_shapes=None, warmup=None, repetitions=None):
     env = dict(base_env)
+    env["FLAGTENSOR_BENCHMARK_MODE"] = "kernel"
     if smoke:
         env.setdefault("FLAGTENSOR_BENCHMARK_WARMUP", "2")
         env.setdefault("FLAGTENSOR_BENCHMARK_REPETITIONS", "5")
@@ -138,18 +164,24 @@ def run_perf(op: str, results_dir: Path, env, suffix: str = "perf"):
     cmd = f"pytest -vs {test_path.name}"
     code, output = run_cmd(cmd, cwd=test_path.parent, env=env)
     write_text(log_path, output)
-    benchmark_csv = ROOT / "benchmark" / "results" / f"CUTENSOR_OP_{uppercase_op(op)}" / "benchmark.csv"
+    benchmark_dir = ROOT / "benchmark" / "results" / f"CUTENSOR_OP_{uppercase_op(op)}"
+    benchmark_csv = benchmark_dir / "benchmark_kernel.csv"
     copied_csv = None
+    speedup_stats = {"avg_speedup": None, "max_speedup": None, "row_count": 0}
     if benchmark_csv.exists():
         copied_csv = results_dir / op / f"{suffix}_benchmark.csv"
         ensure_dir(copied_csv.parent)
         shutil.copy2(benchmark_csv, copied_csv)
+        speedup_stats = load_speedup_stats(benchmark_csv)
     return {
         "status": "PASS" if code == 0 else "FAIL",
         "exit_code": code,
         "log_path": str(log_path),
         "test_path": str(test_path),
         "benchmark_csv": str(copied_csv) if copied_csv else None,
+        "avg_speedup": speedup_stats["avg_speedup"],
+        "max_speedup": speedup_stats["max_speedup"],
+        "row_count": speedup_stats["row_count"],
     }
 
 

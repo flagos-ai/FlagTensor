@@ -78,6 +78,16 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    os.environ["FLAGTENSOR_BENCHMARK_MODE"] = config.getoption("--mode")
+    os.environ["FLAGTENSOR_BENCHMARK_WARMUP"] = str(config.getoption("--warmup"))
+    os.environ["FLAGTENSOR_BENCHMARK_REPETITIONS"] = str(config.getoption("--iter"))
+
+    dtypes = config.getoption("--dtypes") or []
+    if dtypes:
+        os.environ["FLAGTENSOR_BENCHMARK_DTYPES"] = ",".join(dtypes)
+    else:
+        os.environ.pop("FLAGTENSOR_BENCHMARK_DTYPES", None)
+
     for marker in [
         "abs",
         "acos",

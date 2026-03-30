@@ -104,6 +104,7 @@ def run_accuracy(op, gpu_id, project_root, op_dir):
 def run_benchmark(op, gpu_id, project_root, op_dir):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    env["FLAGTENSOR_BENCHMARK_MODE"] = "kernel"
     weekly_benchmark_dir = os.path.join(project_root, "weekly_benchmark")
     cmd = f'pytest -m "{op}" --level core --record log -vs'
     out, err, code = run_cmd_capture(cmd, cwd=weekly_benchmark_dir, env=env)
@@ -113,6 +114,7 @@ def run_benchmark(op, gpu_id, project_root, op_dir):
         f.write(combined)
     rows = parse_perf_rows(combined)
     avg_speedup = sum(row["speedup"] for row in rows) / len(rows) if rows else 0.0
+    max_speedup = max((row["speedup"] for row in rows), default=0.0)
     status = "PASS" if code == 0 else "FAIL"
     return {
         "status": status,
@@ -120,6 +122,7 @@ def run_benchmark(op, gpu_id, project_root, op_dir):
         "log_path": log_path,
         "performance_rows": rows,
         "avg_speedup": avg_speedup,
+        "max_speedup": max_speedup,
     }
 
 
@@ -144,15 +147,15 @@ def write_summary(summary_map, results_dir):
     markdown_path = os.path.join(results_dir, "summary.md")
     with open(markdown_path, "w", encoding="utf-8") as f:
         f.write("# FlagTensor Weekly Summary\n\n")
-        f.write("| operator | gpu | acc_status | passed | failed | skipped | perf_status | avg_speedup |\n")
-        f.write("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
+        f.write("| operator | gpu | acc_status | passed | failed | skipped | perf_status | avg_speedup | max_speedup |\n")
+        f.write("| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
         for op, info in sorted(summary_map.items()):
             accuracy = info["accuracy"]
             performance = info["performance"]
             f.write(
                 f"| {op} | {info['gpu']} | {accuracy['status']} | {accuracy['passed']} | "
                 f"{accuracy['failed']} | {accuracy['skipped']} | {performance['status']} | "
-                f"{performance['avg_speedup']:.6f} |\n"
+                f"{performance['avg_speedup']:.6f} | {performance['max_speedup']:.6f} |\n"
             )
 
     workbook = Workbook()
@@ -170,6 +173,7 @@ def write_summary(summary_map, results_dir):
             "total",
             "perf_status",
             "avg_speedup",
+            "max_speedup",
             "accuracy_log",
             "perf_log",
         ]
@@ -189,6 +193,7 @@ def write_summary(summary_map, results_dir):
                 accuracy["total"],
                 performance["status"],
                 performance["avg_speedup"],
+                performance["max_speedup"],
                 accuracy["log_path"],
                 performance["log_path"],
             ]
