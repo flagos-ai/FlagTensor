@@ -3,7 +3,6 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
-benchmark/results/
 benchmark/results_backup*/
 test_results/
 flagtensor_kernel_report.html
