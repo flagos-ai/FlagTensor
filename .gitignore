@@ -4,6 +4,8 @@ __pycache__/
 *.pyd
 .pytest_cache/
 benchmark/results/
+benchmark/results_backup*/
 test_results/
+flagtensor_kernel_report.html
 src/flagtensor.egg-info/
 weekly_op_test.txt

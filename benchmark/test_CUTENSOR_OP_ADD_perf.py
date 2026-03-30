@@ -2,11 +2,13 @@ import os
 
 import pytest
 import torch
+import triton
 
 from flagtensor import add
 from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
 from flagtensor.config import DEFAULT_ADD_BENCHMARK_SHAPES, DEFAULT_BENCHMARK_DTYPES
 from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorAdd
+from flagtensor.ops.CUTENSOR_OP_ADD import _add_kernel
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_ADD"
@@ -46,6 +48,26 @@ class AddBenchmark(Benchmark):
 
     def reference_impl(self, x, y):
         return x + y
+
+    def build_triton_kernel_callable(self, x, y):
+        z = torch.empty_like(x)
+        n_elements = z.numel()
+        grid = lambda meta: (
+            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
+        )
+
+        def run_kernel():
+            _add_kernel[grid](x, y, z, n_elements)
+            return z
+
+        return run_kernel
+
+    def build_baseline_kernel_callable(self, x, y):
+        baseline = self.baselines.get(x.dtype)
+        if baseline is None:
+            baseline = CuTensorAdd(dtype=x.dtype)
+            self.baselines[x.dtype] = baseline
+        return baseline.build_kernel_callable(x, y)
 
 
 @pytest.mark.performance

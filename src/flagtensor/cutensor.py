@@ -337,6 +337,26 @@ class CuTensorUnary:
 
         self.signature = signature
 
+    def build_kernel_callable(self, x, alpha=1.0):
+        self.prepare(x)
+        y = torch.empty_like(x)
+        alpha_val = self._scalar_value(alpha, x.dtype)
+
+        def run_kernel():
+            status = libcutensor.cutensorPermute(
+                self.handle,
+                self.plan,
+                byref(alpha_val),
+                c_void_p(x.data_ptr()),
+                c_void_p(y.data_ptr()),
+                c_void_p(0),
+            )
+            if status != 0:
+                raise RuntimeError(f"cutensorPermute failed: {status}")
+            return y
+
+        return run_kernel
+
     def __call__(self, x, alpha=1.0):
         self.prepare(x)
         y = torch.empty_like(x)
@@ -559,6 +579,29 @@ class CuTensorBinary:
             raise RuntimeError(f"create plan failed: {status}")
 
         self.signature = signature
+
+    def build_kernel_callable(self, x, y, alpha=1.0, gamma=1.0):
+        self.prepare(x, y)
+        out = torch.empty_like(x)
+        alpha_val = self._scalar_value(alpha, x.dtype)
+        gamma_val = self._scalar_value(gamma, x.dtype)
+
+        def run_kernel():
+            status = libcutensor.cutensorElementwiseBinaryExecute(
+                self.handle,
+                self.plan,
+                byref(alpha_val),
+                c_void_p(x.data_ptr()),
+                byref(gamma_val),
+                c_void_p(y.data_ptr()),
+                c_void_p(out.data_ptr()),
+                c_void_p(0),
+            )
+            if status != 0:
+                raise RuntimeError(f"cutensorElementwiseBinaryExecute failed: {status}")
+            return out
+
+        return run_kernel
 
     def __call__(self, x, y, alpha=1.0, gamma=1.0):
         self.prepare(x, y)

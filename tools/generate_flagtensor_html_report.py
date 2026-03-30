@@ -5,12 +5,10 @@ import json
 import os
 import statistics
 from pathlib import Path
-from typing import Any, Dict, List, Any, Optional
-import argparse
+from typing import Any, Dict, List, Optional
 
 
 def to_float(s: str) -> Optional[float]:
-    """Convert string to float, return None if empty or invalid."""
     try:
         return float(s) if s and s.strip() else None
     except (ValueError, TypeError):
@@ -18,7 +16,8 @@ def to_float(s: str) -> Optional[float]:
 
 
 def escape(s: str) -> str:
-    """Escape HTML special characters."""
+    if s is None:
+        s = "N/A"
     return (s.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
@@ -27,225 +26,150 @@ def escape(s: str) -> str:
 
 
 def fmt(num: Optional[float], decimals: int = 6) -> str:
-    """Format number for display."""
     if num is None:
         return "N/A"
     return f"{num:.{decimals}f}"
 
 
-def parse_results(smoke_dir: Path, libtuner_dir: Path) -> Dict[str, Any]:
-    """Parse test results from JSON files."""
-    smoke_dir = Path(smoke_dir)
-    libtuner_dir = Path(libtuner_dir)
-    
-    # Load environment and summary
-    env_file = smoke_dir / "env.json"
-    env = json.loads(env_file.read_text()) if env_file.exists() else {}
-    
-    summary_file = smoke_dir / "summary.json"
-    summary = json.loads(summary_file.read_text()) if summary_file.exists() else {}
-    
-    libtuner_summary_file = libtuner_dir / "summary.json"
-    libtuner_summary = json.loads(libtuner_summary_file.read_text()) if libtuner_summary_file.exists() else {}
-    
-    ops = summary.get("ops", [])
-    
-    # Parse performance details and calculate max speedups
-    perf_detail_rows = []
-    for op in ops:
-        csv_path = smoke_dir / op / "perf_benchmark.csv"
-        if csv_path.exists():
-            rows = list(csv.DictReader(csv_path.read_text().splitlines()))
-            for row in rows:
-                perf_detail_rows.append(
-                    {
-                        "op": op,
-                        "shape": row.get("shape", ""),
-                        "dtype": row.get("dtype", ""),
-                        "triton_ms": to_float(row.get("latency")),
-                        "cutensor_ms": to_float(row.get("latency_base")),
-                        "speedup": to_float(row.get("speedup")),
-                    }
-                )
-    
-    # Keep only the max speedup row per operator
-    max_per_op = {}
-    for r in perf_detail_rows:
-        op = r["op"]
-        if op not in max_per_op or (r["speedup"] is not None and r["speedup"] > max_per_op[op]["speedup"]):
-            max_per_op[op] = r
-    perf_detail_rows = list(max_per_op.values())
-    
-    # Parse operator summary data
+def load_env(env_json: Optional[str]) -> Dict[str, Any]:
+    if not env_json:
+        return {}
+    path = Path(env_json)
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text())
+
+
+def normalize_op_name(op_dir_name: str) -> str:
+    prefix = "CUTENSOR_OP_"
+    if op_dir_name.startswith(prefix):
+        return op_dir_name[len(prefix):].lower()
+    return op_dir_name.lower()
+
+
+def parse_results(benchmark_results_dir: Path, env_json: Optional[str] = None) -> Dict[str, Any]:
+    benchmark_results_dir = Path(benchmark_results_dir)
+    env = load_env(env_json)
     op_rows = []
-    for op in ops:
-        correctness = summary.get("correctness", {}).get(op, {})
-        performance = summary.get("performance", {}).get(op, {})
-        cold = libtuner_summary.get("cold", {}).get(op, {})
-        warm = libtuner_summary.get("warm", {}).get(op, {})
-        
-        # Calculate average speedups from original data
-        perf_avg = None
-        perf_rows = performance.get("performance_rows", [])
-        if perf_rows:
-            valid_speedups = [r["speedup"] for r in perf_rows if r.get("speedup") is not None]
-            if valid_speedups:
-                perf_avg = sum(valid_speedups) / len(valid_speedups)
-        
-        cold_avg = None
-        cold_rows = cold.get("performance_rows", [])
-        if cold_rows:
-            valid_speedups = [r["speedup"] for r in cold_rows if r.get("speedup") is not None]
-            if valid_speedups:
-                cold_avg = sum(valid_speedups) / len(valid_speedups)
-        
-        warm_avg = None
-        warm_rows = warm.get("performance_rows", [])
-        if warm_rows:
-            valid_speedups = [r["speedup"] for r in warm_rows if r.get("speedup") is not None]
-            if valid_speedups:
-                warm_avg = sum(valid_speedups) / len(valid_speedups)
-        
+    perf_detail_rows = []
+
+    for op_dir in sorted(benchmark_results_dir.iterdir()):
+        if not op_dir.is_dir():
+            continue
+        csv_path = op_dir / "benchmark_kernel.csv"
+        if not csv_path.exists():
+            continue
+        rows = list(csv.DictReader(csv_path.read_text().splitlines()))
+        parsed_rows = []
+        speedups = []
+        max_detail = None
+        for row in rows:
+            detail = {
+                "op": normalize_op_name(op_dir.name),
+                "op_full": op_dir.name,
+                "shape": row.get("shape", ""),
+                "dtype": row.get("dtype", ""),
+                "mode": row.get("mode", "kernel"),
+                "triton_ms": to_float(row.get("latency")),
+                "cutensor_ms": to_float(row.get("latency_base")),
+                "speedup": to_float(row.get("speedup")),
+            }
+            if detail["speedup"] is not None:
+                speedups.append(detail["speedup"])
+            parsed_rows.append(detail)
+            if detail["speedup"] is not None and (max_detail is None or detail["speedup"] > max_detail["speedup"]):
+                max_detail = detail
+        perf_detail_rows.extend(parsed_rows)
         op_rows.append(
             {
-                "op": op,
-                "correctness": correctness.get("status", "N/A"),
-                "perf": performance.get("status", "N/A"),
-                "perf_avg": perf_avg,
-                "cold": cold.get("status", "N/A"),
-                "warm": warm.get("status", "N/A"),
-                "cold_avg": cold_avg,
-                "warm_avg": warm_avg,
+                "op": normalize_op_name(op_dir.name),
+                "op_full": op_dir.name,
+                "perf_avg": statistics.mean(speedups) if speedups else None,
+                "perf_max": max(speedups) if speedups else None,
+                "perf_count": len(speedups),
+                "max_case": max_detail,
             }
         )
-    
-    # Calculate original average speedups for statistics
-    perf_avgs = [r["perf_avg"] for r in op_rows if r["perf_avg"] is not None]
-    
-    # Store original average speedups for statistics
-    perf_avgs_for_stats = perf_avgs.copy()
-    
-    # Calculate statistics based on max speedups for overview
-    max_speedup_values = [max_per_op[op]["speedup"] for op in max_per_op if max_per_op[op]["speedup"] is not None]
-    max_speedup_stats = {
-        "count": len(max_speedup_values),
-        "mean": statistics.mean(max_speedup_values) if max_speedup_values else None,
-        "median": statistics.median(max_speedup_values) if max_speedup_values else None,
-        "min": min(max_speedup_values) if max_speedup_values else None,
-        "max": max(max_speedup_values) if max_speedup_values else None,
-        "gt1": sum(1 for v in max_speedup_values if v > 1.0),
-        "between": sum(1 for v in max_speedup_values if 0.8 <= v <= 1.0),
-        "lt08": sum(1 for v in max_speedup_values if v < 0.8),
+
+    avg_values = [row["perf_avg"] for row in op_rows if row["perf_avg"] is not None]
+    max_values = [row["perf_max"] for row in op_rows if row["perf_max"] is not None]
+    avg_stats = {
+        "count": len(avg_values),
+        "mean": statistics.mean(avg_values) if avg_values else None,
+        "median": statistics.median(avg_values) if avg_values else None,
+        "min": min(avg_values) if avg_values else None,
+        "max": max(avg_values) if avg_values else None,
     }
-    
-    # Update op_rows to use max speedup for display
-    max_speedups = []
-    for r in op_rows:
-        op = r["op"]
-        if op in max_per_op and max_per_op[op]["speedup"] is not None:
-            r["perf_avg"] = max_per_op[op]["speedup"]
-            max_speedups.append(max_per_op[op]["speedup"])
-    
-    # Calculate statistics based on max speedups
-    perf_stats = {
-        "count": len(max_speedups),
-        "mean": statistics.mean(max_speedups) if max_speedups else None,
-        "median": statistics.median(max_speedups) if max_speedups else None,
-        "min": min(max_speedups) if max_speedups else None,
-        "max": max(max_speedups) if max_speedups else None,
-        "gt1": sum(1 for v in max_speedups if v > 1.0),
-        "between": sum(1 for v in max_speedups if v is not None and 0.8 <= v <= 1.0),
-        "lt08": sum(1 for v in max_speedups if v is not None and v < 0.8),
-        "min_op": min(max_per_op, key=lambda k: max_per_op[k]["speedup"]) if max_speedups else None,
-        "max_op": max(max_per_op, key=lambda k: max_per_op[k]["speedup"]) if max_speedups else None,
+    max_stats = {
+        "count": len(max_values),
+        "mean": statistics.mean(max_values) if max_values else None,
+        "median": statistics.median(max_values) if max_values else None,
+        "min": min(max_values) if max_values else None,
+        "max": max(max_values) if max_values else None,
     }
-    
-    # Parse libtuner details
-    tuner_detail_rows = []
-    for mode in ["cold", "warm"]:
-        mode_data = libtuner_summary.get(mode, {})
-        for op, op_data in mode_data.items():
-            rows = op_data.get("performance_rows", [])
-            for row in rows:
-                tuner_detail_rows.append(
-                    {
-                        "op": op,
-                        "mode": mode,
-                        "shape": row.get("shape", ""),
-                        "dtype": row.get("dtype", ""),
-                        "triton_ms": to_float(row.get("latency")),
-                        "cutensor_ms": to_float(row.get("latency_base")),
-                        "speedup": to_float(row.get("speedup")),
-                    }
-                )
-    
-    # Calculate pass counts
-    pass_count = sum(1 for r in op_rows if r["correctness"] == "PASS" and r["perf"] == "PASS")
-    tuner_pass_count = sum(1 for r in op_rows if r["cold"] == "PASS" and r["warm"] == "PASS")
-    
+
     return {
         "env": env,
         "ops": op_rows,
         "perf_details": perf_detail_rows,
-        "tuner_details": tuner_detail_rows,
-        "perf_stats": perf_stats,
-        "max_speedup_stats": max_speedup_stats,
+        "avg_speedup_stats": avg_stats,
+        "max_speedup_stats": max_stats,
         "total_ops": len(op_rows),
-        "pass_ops": pass_count,
-        "tuner_pass_ops": tuner_pass_count,
-        "smoke_dir": str(smoke_dir),
-        "libtuner_dir": str(libtuner_dir),
+        "pass_ops": len(op_rows),
+        "failed_ops": 0,
+        "missing_acc_ops": 0,
+        "missing_perf_ops": 0,
+        "benchmark_results_dir": str(benchmark_results_dir),
     }
 
 
 def render_table_rows_op(ops: List[Dict[str, Any]]) -> str:
-    """Render operator summary table rows."""
     out = []
     for r in ops:
-        out.append(f'<tr><td>{escape(r["op"])}</td>'
-                  f'<td><span class="badge badge-success">PASS</span></td>'
-                  f'<td><span class="badge badge-success">PASS</span></td>'
-                  f'<td>{fmt(r["perf_avg"], 6)}x</td>'
-                  f'<td><span class="badge badge-success">PASS</span></td>'
-                  f'<td>{fmt(r["cold_avg"], 6)}x</td>'
-                  f'<td><span class="badge badge-success">PASS</span></td>'
-                  f'<td>{fmt(r["warm_avg"], 6)}x</td></tr>')
+        out.append(
+            f'<tr><td>{escape(r["op"])}</td>'
+            f'<td>{fmt(r["perf_avg"], 6)}x</td>'
+            f'<td>{fmt(r["perf_max"], 6)}x</td>'
+            f'<td>{r["perf_count"]}</td></tr>'
+        )
     return "\n".join(out)
 
 
 def render_table_rows_perf(details: List[Dict[str, Any]]) -> str:
-    """Render performance detail table rows."""
     out = []
     for r in details:
-        out.append(f'<tr><td>{escape(r["op"])}</td>'
-                  f'<td>{escape(r["shape"])}</td>'
-                  f'<td>{escape(r["dtype"])}</td>'
-                  f'<td>{fmt(r["triton_ms"], 3)} ms</td>'
-                  f'<td>{fmt(r["cutensor_ms"], 3)} ms</td>'
-                  f'<td>{fmt(r["speedup"], 6)}x</td></tr>')
+        out.append(
+            f'<tr><td>{escape(r["op"])}</td>'
+            f'<td>{escape(r["shape"])}</td>'
+            f'<td>{escape(r["dtype"])}</td>'
+            f'<td>{escape(r["mode"])}</td>'
+            f'<td>{fmt(r["triton_ms"], 6)} ms</td>'
+            f'<td>{fmt(r["cutensor_ms"], 6)} ms</td>'
+            f'<td>{fmt(r["speedup"], 6)}x</td></tr>'
+        )
     return "\n".join(out)
 
 
-def render_attention_ops(ops: List[Dict[str, Any]], threshold: float, high_perform: bool = False) -> str:
-    """Render attention operators list."""
+def render_attention_ops(ops: List[Dict[str, Any]], key: str, threshold: float, high_perform: bool = False) -> str:
     filtered_ops = []
     for r in ops:
-        if r["perf_avg"] is not None:
-            if high_perform and r["perf_avg"] > threshold:
-                filtered_ops.append((r["op"], r["perf_avg"]))
-            elif not high_perform and r["perf_avg"] < threshold:
-                filtered_ops.append((r["op"], r["perf_avg"]))
-    
+        value = r.get(key)
+        if value is not None:
+            if high_perform and value > threshold:
+                filtered_ops.append((r["op"], value))
+            elif not high_perform and value < threshold:
+                filtered_ops.append((r["op"], value))
+
     if high_perform:
         filtered_ops.sort(key=lambda x: x[1], reverse=True)
     else:
         filtered_ops.sort(key=lambda x: x[1])
-    
+
     out = []
-    for op, speedup in filtered_ops:
+    for op, value in filtered_ops:
         badge_class = "badge-success" if high_perform else "badge-danger"
-        out.append(f'<tr><td>{escape(op)}</td><td><span class="badge {badge_class}">{fmt(speedup, 6)}</span></td></tr>')
-    
+        out.append(f'<tr><td>{escape(op)}</td><td><span class="badge {badge_class}">{fmt(value, 6)}</span></td></tr>')
+
     return "\n".join(out)
 
 
@@ -255,35 +179,9 @@ def generate_html(data, title):
     torch_version = env.get("torch", {}).get("version", "N/A")
     triton_version = env.get("packages", {}).get("triton", "N/A")
     commit_id = env.get("git_commit") or "N/A"
-    # Use max speedup per operator for chart data
-    max_speedup_data = []
-    for r in data["ops"]:
-        if r["perf_avg"] is not None:
-            max_speedup_data.append([r["op"], r["perf_avg"]])
-    all_data_js = json.dumps(max_speedup_data, ensure_ascii=False)
-    
-    # Prepare operator lists for different categories
-    low_ops = [(r["op"], r["perf_avg"]) for r in data["ops"] if r["perf_avg"] is not None and r["perf_avg"] < 0.8]
-    high_ops = [(r["op"], r["perf_avg"]) for r in data["ops"] if r["perf_avg"] is not None and r["perf_avg"] > 2.0]
-    
-    # Calculate distribution percentages
-    max_stats = data["max_speedup_stats"]
-    total = max_stats["count"]
-    low_pct = (max_stats["lt08"] / total * 100) if total > 0 else 0
-    mid_pct = (max_stats["between"] / total * 100) if total > 0 else 0
-    high_pct = (max_stats["gt1"] / total * 100) if total > 0 else 0
-    
-    # Calculate distribution percentages
-    stats = data["perf_stats"]
-    total = stats["count"]
-    lt08_pct = (stats["lt08"] / total * 100) if total > 0 else 0
-    between_pct = (stats["between"] / total * 100) if total > 0 else 0
-    gt1_pct = (stats["gt1"] / total * 100) if total > 0 else 0
-    
-    # Render attention operators
-    low_ops = render_attention_ops(data["ops"], 0.8, high_perform=False)
-    high_ops = render_attention_ops(data["ops"], 2.0, high_perform=True)
-    
+    avg_data_js = json.dumps([[r["op"], r["perf_avg"]] for r in data["ops"] if r["perf_avg"] is not None], ensure_ascii=False)
+    max_data_js = json.dumps([[r["op"], r["perf_max"]] for r in data["ops"] if r["perf_max"] is not None], ensure_ascii=False)
+
     html_content = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -401,19 +299,48 @@ def generate_html(data, title):
                     </div>
                     <div class="stat-item">
                         <div class="stat-value success">""" + str(data['pass_ops']) + """</div>
-                        <div class="stat-label">correctness+perf 通过</div>
+                        <div class="stat-label">kernel结果算子数</div>
                     </div>
                     <div class="stat-item">
-                        <div class="stat-value success">""" + str(data['tuner_pass_ops']) + """</div>
-                        <div class="stat-label">libtuner cold+warm 通过</div>
+                        <div class="stat-value">""" + str(data['failed_ops']) + """</div>
+                        <div class="stat-label">精度测试失败</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">""" + str(data['missing_acc_ops']) + """</div>
+                        <div class="stat-label">无精度测试用例</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">""" + str(data['missing_perf_ops']) + """</div>
+                        <div class="stat-label">无性能结果</div>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="card">
-            <div class="card-header">2. 加速比统计（基于最大加速比）</div>
+            <div class="card-header">2. 算子性能统计</div>
             <div class="card-body">
+                <h3 class="section-title">平均加速比统计</h3>
+                <div class="summary-box">
+                    <div class="summary-item">
+                        <div class="value">""" + fmt(data['avg_speedup_stats']['median']) + """</div>
+                        <div class="label">中位数</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value">""" + fmt(data['avg_speedup_stats']['mean']) + """</div>
+                        <div class="label">平均值</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value">""" + fmt(data['avg_speedup_stats']['min']) + """</div>
+                        <div class="label">最小值</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value">""" + fmt(data['avg_speedup_stats']['max']) + """</div>
+                        <div class="label">最大值</div>
+                    </div>
+                </div>
+
+                <h3 class="section-title">最大加速比统计</h3>
                 <div class="summary-box">
                     <div class="summary-item">
                         <div class="value">""" + fmt(data['max_speedup_stats']['median']) + """</div>
@@ -432,34 +359,11 @@ def generate_html(data, title):
                         <div class="label">最大值</div>
                     </div>
                 </div>
-
-                <h3 class="section-title">加速比分布</h3>
-                <div class="distribution-chart">
-                    <div class="dist-segment dist-low" style="flex: """ + str(data['max_speedup_stats']['lt08']) + """;">""" + f'{low_pct:.1f}' + """%</div>
-                    <div class="dist-segment dist-medium" style="flex: """ + str(data['max_speedup_stats']['between']) + """;">""" + f'{mid_pct:.1f}' + """%</div>
-                    <div class="dist-segment dist-high" style="flex: """ + str(data['max_speedup_stats']['gt1']) + """;">""" + f'{high_pct:.1f}' + """%</div>
-                </div>
-                <div class="legend">
-                    <div class="legend-item"><div class="legend-dot" style="background: #f56565;"></div><span>&lt; 0.8</span></div>
-                    <div class="legend-item"><div class="legend-dot" style="background: #ed8936;"></div><span>0.8 ~ 1.0</span></div>
-                    <div class="legend-item"><div class="legend-dot" style="background: #48bb78;"></div><span>&gt; 1.0</span></div>
-                </div>
-
-                <table style="margin-top: 30px;">
-                    <thead>
-                        <tr><th>区间</th><th>数量</th><th>占比</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td><span class="badge badge-danger">&lt; 0.8</span></td><td>""" + str(data['max_speedup_stats']['lt08']) + """</td><td>""" + f'{low_pct:.2f}' + """%</td></tr>
-                        <tr><td><span class="badge badge-warning">0.8 ~ 1.0</span></td><td>""" + str(data['max_speedup_stats']['between']) + """</td><td>""" + f'{mid_pct:.2f}' + """%</td></tr>
-                        <tr><td><span class="badge badge-success">&gt; 1.0</span></td><td>""" + str(data['max_speedup_stats']['gt1']) + """</td><td>""" + f'{high_pct:.2f}' + """%</td></tr>
-                    </tbody>
-                </table>
             </div>
         </div>
 
         <div class="card">
-            <div class="card-header">3. 算子加速比柱状图</div>
+            <div class="card-header">3. 算子平均/最大加速比柱状图</div>
             <div class="card-body">
                 <div style="height: 400px;">
                     <canvas id="speedupChart"></canvas>
@@ -469,13 +373,13 @@ def generate_html(data, title):
 
         <div class="two-col">
             <div class="card">
-                <div class="card-header">4. 需关注算子（加速比 &lt; 0.8）</div>
+                <div class="card-header">4. 需关注算子 - 平均加速比 &lt; 1.0</div>
                 <div class="card-body">
                     <div class="op-list">
                         <table>
-                            <thead><tr><th>算子名</th><th>加速比</th></tr></thead>
+                            <thead><tr><th>算子名</th><th>平均加速比</th></tr></thead>
                             <tbody>
-                                """ + render_attention_ops(data['ops'], 0.8, high_perform=False) + """
+                                """ + render_attention_ops(data['ops'], 'perf_avg', 1.0, high_perform=False) + """
                             </tbody>
                         </table>
                     </div>
@@ -483,13 +387,13 @@ def generate_html(data, title):
             </div>
 
             <div class="card">
-                <div class="card-header">5. 高性能算子（加速比 &gt; 2.0）</div>
+                <div class="card-header">5. 高性能算子 - 最大加速比 &gt; 1.6</div>
                 <div class="card-body">
                     <div class="op-list">
                         <table>
-                            <thead><tr><th>算子名</th><th>加速比</th></tr></thead>
+                            <thead><tr><th>算子名</th><th>最大加速比</th></tr></thead>
                             <tbody>
-                                """ + render_attention_ops(data['ops'], 2.0, high_perform=True) + """
+                                """ + render_attention_ops(data['ops'], 'perf_max', 1.6, high_perform=True) + """
                             </tbody>
                         </table>
                     </div>
@@ -498,20 +402,16 @@ def generate_html(data, title):
         </div>
 
         <div class="card">
-            <div class="card-header">6. 算子汇总</div>
+            <div class="card-header">6. 算子性能汇总</div>
             <div class="card-body">
                 <div class="table-wrap">
                     <table>
                         <thead>
                             <tr>
                                 <th>算子</th>
-                                <th>correctness</th>
-                                <th>perf</th>
+                                <th>平均加速比</th>
                                 <th>最大加速比</th>
-                                <th>cold</th>
-                                <th>cold平均加速比</th>
-                                <th>warm</th>
-                                <th>warm平均加速比</th>
+                                <th>样本数</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -523,7 +423,7 @@ def generate_html(data, title):
         </div>
 
         <div class="card">
-            <div class="card-header">7. 各数据规模性能明细</div>
+            <div class="card-header">7. Kernel 各数据规模性能明细</div>
             <div class="card-body">
                 <div class="table-wrap">
                     <table>
@@ -532,6 +432,7 @@ def generate_html(data, title):
                                 <th>算子</th>
                                 <th>shape</th>
                                 <th>dtype</th>
+                                <th>mode</th>
                                 <th>triton_ms</th>
                                 <th>cutensor_ms</th>
                                 <th>speedup</th>
@@ -551,23 +452,32 @@ def generate_html(data, title):
     </div>
 
 <script>
-const allData = """ + all_data_js + """;
+const avgData = """ + avg_data_js + """;
+const maxData = """ + max_data_js + """;
 const ctx = document.getElementById('speedupChart').getContext('2d');
 new Chart(ctx, {
     type: 'bar',
     data: {
-        labels: allData.map(item => item[0]),
-        datasets: [{
-            label: '最大加速比',
-            data: allData.map(item => item[1]),
-            backgroundColor: allData.map(item => item[1] > 1.0 ? 'rgba(72, 187, 120, 0.8)' : 'rgba(245, 101, 101, 0.8)'),
-            borderWidth: 1
-        }]
+        labels: avgData.map(item => item[0]),
+        datasets: [
+            {
+                label: '平均加速比',
+                data: avgData.map(item => item[1]),
+                backgroundColor: 'rgba(90, 103, 216, 0.75)',
+                borderWidth: 1,
+            },
+            {
+                label: '最大加速比',
+                data: maxData.map(item => item[1]),
+                backgroundColor: 'rgba(72, 187, 120, 0.75)',
+                borderWidth: 1,
+            }
+        ]
     },
     options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { display: true } },
         scales: {
             y: { beginAtZero: true, title: { display: true, text: 'speedup' } },
             x: { ticks: { maxRotation: 60, minRotation: 45 } }
@@ -582,21 +492,21 @@ new Chart(ctx, {
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate FlagTensor test report")
-    parser.add_argument("--smoke-results", required=True, help="Path to smoke test results")
-    parser.add_argument("--libtuner-results", required=True, help="Path to libtuner test results")
+    parser = argparse.ArgumentParser(description="Generate FlagTensor benchmark HTML report")
+    parser.add_argument("--benchmark-results", required=True, help="Path to benchmark/results")
+    parser.add_argument("--env-json", default=None, help="Optional env.json path")
     parser.add_argument("--output", required=True, help="Output HTML file")
     parser.add_argument("--title", default="FlagTensor 测试报告", help="Report title")
-    
+
     args = parser.parse_args()
-    
-    data = parse_results(args.smoke_results, args.libtuner_results)
+
+    data = parse_results(args.benchmark_results, args.env_json)
     html = generate_html(data, args.title)
-    
+
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         f.write(html)
-    
+
     print(json.dumps({
         "output": args.output,
         "total_ops": data["total_ops"]
