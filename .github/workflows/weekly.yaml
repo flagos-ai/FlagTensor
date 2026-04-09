@@ -10,6 +10,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install package
         run: |
+          export PATH=$HOME/.pyenv/bin:$PATH
+          eval $(pyenv init - bash)
           uv venv
           source .venv/bin/activate
           uv pip install -e .
