@@ -19,6 +19,8 @@ jobs:
           nvidia-smi
       - name: Install package
         run: |
+          export PATH=$HOME/.pyenv/bin:$PATH
+          eval $(pyenv init - bash)
           uv venv
           source .venv/bin/activate
           uv pip install -e .
