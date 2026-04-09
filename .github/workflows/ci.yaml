@@ -18,7 +18,8 @@ jobs:
       - name: Install package
         shell: bash
         run: |
-          export PATH=/home/secure/.pyenv/bin:$PATH
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH=$PYENV_ROOT/bin:$PATH
           eval "$(pyenv init - bash)"
           uv venv
           source .venv/bin/activate
