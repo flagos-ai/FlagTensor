@@ -23,9 +23,21 @@ def run_text(cmd, cwd=None):
 
 
 def module_version(name):
+    """通过 import 检测模块版本（可能不准确，因为模块名和包名可能不同）"""
     try:
         module = __import__(name)
         return getattr(module, "__version__", "UNKNOWN")
+    except Exception as exc:
+        return f"MISSING: {type(exc).__name__}: {exc}"
+
+
+def pip_package_version(name):
+    """通过 importlib.metadata 检测 pip 安装的包版本（更准确）"""
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+        return version(name)
+    except PackageNotFoundError:
+        return f"MISSING: PackageNotFoundError: {name}"
     except Exception as exc:
         return f"MISSING: {type(exc).__name__}: {exc}"
 
@@ -64,14 +76,14 @@ def build_env_payload(project_root=None):
             "machine": platform.machine(),
         },
         "packages": {
-            "torch": module_version("torch"),
-            "triton": module_version("triton"),
-            "flagtree": module_version("flagtree"),
-            "flaggems": module_version("flaggems"),
-            "vllm": module_version("vllm"),
-            "pytest": module_version("pytest"),
-            "matplotlib": module_version("matplotlib"),
-            "openpyxl": module_version("openpyxl"),
+            "torch": pip_package_version("torch"),
+            "triton": pip_package_version("triton"),
+            "flagtree": pip_package_version("flagtree"),
+            "flaggems": pip_package_version("flaggems"),
+            "vllm": pip_package_version("vllm"),
+            "pytest": pip_package_version("pytest"),
+            "matplotlib": pip_package_version("matplotlib"),
+            "openpyxl": pip_package_version("openpyxl"),
         },
         "torch": torch_details(),
         "cuda": {

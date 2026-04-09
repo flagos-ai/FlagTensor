@@ -1,17 +1,46 @@
-# FlagTensor
+[English|[中文版](./README_cn.md)]
 
-FlagTensor is a Triton operator playground aligned with FlagGems-style benchmarking and testing, using cuTensor C APIs as baselines.
+## Introduction
 
-可以通过 `python tools/run_flagtensor_ci.py --op-list tools/ci_op_list.txt` 执行 CI 基准测试。
+FlagTensor is part of [FlagOS](https://flagos.io/). FlagTensor is a tensor-primitive library oriented toward multiple hardware backends. It provides high-performance implementations of common tensor primitives (for example, unary, binary, and contraction operations), and supports correctness and performance comparisons against cuTensor baselines.
 
-生成测试结果之后，通过
+FlagTensor is a high-performance tensor-primitive library implemented with the [Triton programming language](https://github.com/openai/triton) launched by OpenAI.
 
-```bash
-python tools/generate_flagtensor_html_report.py \
-  --benchmark-results benchmark/results \
-  --env-json ci_results/env.json \
-  --output ci_results/FlagTensor_CI_report.html \
-  --title "FlagTensor CI 测试报告"
+## Features
+
+- Tensor primitives have undergone performance tuning
+- Triton kernel call optimization
+- Flexible multi-backend support mechanism
+- Support for common tensor primitives
+
+## Quick Installation
+
+### Install Dependencies
+
+```shell
+pip install -U pip setuptools wheel
+pip install torch triton pytest pyyaml matplotlib openpyxl
 ```
 
-若不需要环境信息，可省略 `--env-json`。生成对应 HTML 报告。
+### Install FlagTensor
+
+```shell
+git clone https://github.com/flagos-ai/FlagTensor.git
+cd FlagTensor
+pip install -e .
+```
+
+## Usage Example
+
+```python
+import torch
+import flagtensor
+
+# Create a tensor
+x = torch.randn(1024, device="cuda", dtype=torch.float32)
+
+# Apply ReLU operator
+y = flagtensor.relu(x)
+```
+
+This project is licensed under the [Apache (Version 2.0) License](./LICENSE).
