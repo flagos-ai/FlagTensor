@@ -11,9 +11,6 @@ jobs:
     runs-on: h20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
       - name: Verify running on H20 machine
         run: |
           echo "Running on machine:"
@@ -22,8 +19,9 @@ jobs:
           nvidia-smi
       - name: Install package
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install .
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e .
       - name: FlagTensor CI (smoke)
         run: |
           python tools/run_flagtensor_ci.py --op-list tools/ci_op_list.txt --smoke
