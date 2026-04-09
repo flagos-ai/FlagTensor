@@ -19,7 +19,7 @@ jobs:
         shell: bash
         run: |
           export PATH=/home/secure/.pyenv/bin:$PATH
-          eval $(pyenv init - bash)
+          eval "$(pyenv init - bash)"
           uv venv
           source .venv/bin/activate
           uv pip install -e .
