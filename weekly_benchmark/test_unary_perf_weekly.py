@@ -8,12 +8,14 @@ from benchmark.test_CUTENSOR_OP_ASIN_perf import test_asin_perf as _test_asin_pe
 from benchmark.test_CUTENSOR_OP_ASINH_perf import test_asinh_perf as _test_asinh_perf
 from benchmark.test_CUTENSOR_OP_ATAN_perf import test_atan_perf as _test_atan_perf
 from benchmark.test_CUTENSOR_OP_ATANH_perf import test_atanh_perf as _test_atanh_perf
+from benchmark.test_CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION_perf import test_block_sparse_tensor_contraction_perf as _test_block_sparse_tensor_contraction_perf
 from benchmark.test_CUTENSOR_OP_CEIL_perf import test_ceil_perf as _test_ceil_perf
 from benchmark.test_CUTENSOR_OP_CONJ_perf import test_conj_perf as _test_conj_perf
 from benchmark.test_CUTENSOR_OP_COS_perf import test_cos_perf as _test_cos_perf
 from benchmark.test_CUTENSOR_OP_COSH_perf import test_cosh_perf as _test_cosh_perf
 from benchmark.test_CUTENSOR_OP_EXP_perf import test_exp_perf as _test_exp_perf
 from benchmark.test_CUTENSOR_OP_FLOOR_perf import test_floor_perf as _test_floor_perf
+from benchmark.test_CUTENSOR_OP_GETT_perf import test_gett_perf as _test_gett_perf
 from benchmark.test_CUTENSOR_OP_IDENTITY_perf import test_identity_perf as _test_identity_perf
 from benchmark.test_CUTENSOR_OP_LOG_perf import test_log_perf as _test_log_perf
 from benchmark.test_CUTENSOR_OP_MAX_perf import test_max_perf as _test_max_perf
@@ -32,6 +34,11 @@ from benchmark.test_CUTENSOR_OP_SQRT_perf import test_sqrt_perf as _test_sqrt_pe
 from benchmark.test_CUTENSOR_OP_SWISH_perf import test_swish_perf as _test_swish_perf
 from benchmark.test_CUTENSOR_OP_TAN_perf import test_tan_perf as _test_tan_perf
 from benchmark.test_CUTENSOR_OP_TANH_perf import test_tanh_perf as _test_tanh_perf
+from benchmark.test_CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY_perf import test_tensor_contraction_trinary_perf as _test_tensor_contraction_trinary_perf
+from benchmark.test_CUTENSOR_OP_TGETT_perf import test_tgett_perf as _test_tgett_perf
+from benchmark.test_CUTENSOR_OP_TRINARY_GENERIC_perf import test_trinary_generic_perf as _test_trinary_generic_perf
+from benchmark.test_CUTENSOR_OP_TRINARY_GENERIC_perf import test_trinary_generic_high_rank_indexed_perf as _test_trinary_generic_high_rank_indexed_perf
+from benchmark.test_CUTENSOR_OP_TTGT_perf import test_ttgt_perf as _test_ttgt_perf
 
 
 def _mark_perf(op_marker, func):
@@ -46,12 +53,14 @@ test_asin_perf_weekly = _mark_perf("asin", _test_asin_perf)
 test_asinh_perf_weekly = _mark_perf("asinh", _test_asinh_perf)
 test_atan_perf_weekly = _mark_perf("atan", _test_atan_perf)
 test_atanh_perf_weekly = _mark_perf("atanh", _test_atanh_perf)
+test_block_sparse_tensor_contraction_perf_weekly = _mark_perf("block_sparse_tensor_contraction", _test_block_sparse_tensor_contraction_perf)
 test_ceil_perf_weekly = _mark_perf("ceil", _test_ceil_perf)
 test_conj_perf_weekly = _mark_perf("conj", _test_conj_perf)
 test_cos_perf_weekly = _mark_perf("cos", _test_cos_perf)
 test_cosh_perf_weekly = _mark_perf("cosh", _test_cosh_perf)
 test_exp_perf_weekly = _mark_perf("exp", _test_exp_perf)
 test_floor_perf_weekly = _mark_perf("floor", _test_floor_perf)
+test_gett_perf_weekly = _mark_perf("gett", _test_gett_perf)
 test_identity_perf_weekly = _mark_perf("identity", _test_identity_perf)
 test_log_perf_weekly = _mark_perf("log", _test_log_perf)
 test_max_perf_weekly = _mark_perf("max", _test_max_perf)
@@ -70,3 +79,8 @@ test_sqrt_perf_weekly = _mark_perf("sqrt", _test_sqrt_perf)
 test_swish_perf_weekly = _mark_perf("swish", _test_swish_perf)
 test_tan_perf_weekly = _mark_perf("tan", _test_tan_perf)
 test_tanh_perf_weekly = _mark_perf("tanh", _test_tanh_perf)
+test_tensor_contraction_trinary_perf_weekly = _mark_perf("tensor_contraction_trinary", _test_tensor_contraction_trinary_perf)
+test_tgett_perf_weekly = _mark_perf("tgett", _test_tgett_perf)
+test_trinary_generic_perf_weekly = _mark_perf("trinary_generic", _test_trinary_generic_perf)
+test_trinary_generic_high_rank_perf_weekly = _mark_perf("trinary_generic", _test_trinary_generic_high_rank_indexed_perf)
+test_ttgt_perf_weekly = _mark_perf("ttgt", _test_ttgt_perf)

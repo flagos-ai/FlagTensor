@@ -8,12 +8,14 @@ from ctests.test_CUTENSOR_OP_ASIN import test_asin_correctness as _test_asin_cor
 from ctests.test_CUTENSOR_OP_ASINH import test_asinh_correctness as _test_asinh_correctness
 from ctests.test_CUTENSOR_OP_ATAN import test_atan_correctness as _test_atan_correctness
 from ctests.test_CUTENSOR_OP_ATANH import test_atanh_correctness as _test_atanh_correctness
+from ctests.test_CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import test_block_sparse_tensor_contraction_correctness as _test_block_sparse_tensor_contraction_correctness
 from ctests.test_CUTENSOR_OP_CEIL import test_ceil_correctness as _test_ceil_correctness
 from ctests.test_CUTENSOR_OP_CONJ import test_conj_correctness as _test_conj_correctness
 from ctests.test_CUTENSOR_OP_COS import test_cos_correctness as _test_cos_correctness
 from ctests.test_CUTENSOR_OP_COSH import test_cosh_correctness as _test_cosh_correctness
 from ctests.test_CUTENSOR_OP_EXP import test_exp_correctness as _test_exp_correctness
 from ctests.test_CUTENSOR_OP_FLOOR import test_floor_correctness as _test_floor_correctness
+from ctests.test_CUTENSOR_OP_GETT import test_gett_correctness as _test_gett_correctness
 from ctests.test_CUTENSOR_OP_IDENTITY import test_identity_correctness as _test_identity_correctness
 from ctests.test_CUTENSOR_OP_LOG import test_log_correctness as _test_log_correctness
 from ctests.test_CUTENSOR_OP_MAX import test_max_correctness as _test_max_correctness
@@ -32,7 +34,13 @@ from ctests.test_CUTENSOR_OP_SQRT import test_sqrt_correctness as _test_sqrt_cor
 from ctests.test_CUTENSOR_OP_SWISH import test_swish_correctness as _test_swish_correctness
 from ctests.test_CUTENSOR_OP_TAN import test_tan_correctness as _test_tan_correctness
 from ctests.test_CUTENSOR_OP_TANH import test_tanh_correctness as _test_tanh_correctness
-
+from ctests.test_CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY import test_tensor_contraction_trinary_correctness as _test_tensor_contraction_trinary_correctness
+from ctests.test_CUTENSOR_OP_TGETT import test_tgett_correctness as _test_tgett_correctness
+from ctests.test_CUTENSOR_OP_TTGT import test_ttgt_correctness as _test_ttgt_correctness
+from ctests.test_CUTENSOR_OP_TRINARY_GENERIC import test_trinary_generic_mul_add as _test_trinary_generic_mul_add
+from ctests.test_CUTENSOR_OP_TRINARY_GENERIC import test_trinary_generic_broadcast_and_modes as _test_trinary_generic_broadcast_and_modes
+from ctests.test_CUTENSOR_OP_TRINARY_GENERIC import test_trinary_generic_complex_broadcast_indexed_fused_scope as _test_trinary_generic_complex_broadcast_indexed_fused_scope
+from ctests.test_CUTENSOR_OP_TRINARY_GENERIC import test_trinary_generic_high_rank_indexed_fused_scope as _test_trinary_generic_high_rank_indexed_fused_scope
 
 test_abs_weekly = pytest.mark.abs(_test_abs_correctness)
 test_acos_weekly = pytest.mark.acos(_test_acos_correctness)
@@ -42,12 +50,14 @@ test_asin_weekly = pytest.mark.asin(_test_asin_correctness)
 test_asinh_weekly = pytest.mark.asinh(_test_asinh_correctness)
 test_atan_weekly = pytest.mark.atan(_test_atan_correctness)
 test_atanh_weekly = pytest.mark.atanh(_test_atanh_correctness)
+test_block_sparse_tensor_contraction_weekly = pytest.mark.block_sparse_tensor_contraction(_test_block_sparse_tensor_contraction_correctness)
 test_ceil_weekly = pytest.mark.ceil(_test_ceil_correctness)
 test_conj_weekly = pytest.mark.conj(_test_conj_correctness)
 test_cos_weekly = pytest.mark.cos(_test_cos_correctness)
 test_cosh_weekly = pytest.mark.cosh(_test_cosh_correctness)
 test_exp_weekly = pytest.mark.exp(_test_exp_correctness)
 test_floor_weekly = pytest.mark.floor(_test_floor_correctness)
+test_gett_weekly = pytest.mark.gett(_test_gett_correctness)
 test_identity_weekly = pytest.mark.identity(_test_identity_correctness)
 test_log_weekly = pytest.mark.log(_test_log_correctness)
 test_max_weekly = pytest.mark.max(_test_max_correctness)
@@ -66,3 +76,10 @@ test_sqrt_weekly = pytest.mark.sqrt(_test_sqrt_correctness)
 test_swish_weekly = pytest.mark.swish(_test_swish_correctness)
 test_tan_weekly = pytest.mark.tan(_test_tan_correctness)
 test_tanh_weekly = pytest.mark.tanh(_test_tanh_correctness)
+test_tensor_contraction_trinary_weekly = pytest.mark.tensor_contraction_trinary(_test_tensor_contraction_trinary_correctness)
+test_tgett_weekly = pytest.mark.tgett(_test_tgett_correctness)
+test_ttgt_weekly = pytest.mark.ttgt(_test_ttgt_correctness)
+test_trinary_generic_mul_add_weekly = pytest.mark.trinary_generic(_test_trinary_generic_mul_add)
+test_trinary_generic_weekly = pytest.mark.trinary_generic(_test_trinary_generic_broadcast_and_modes)
+test_trinary_generic_high_rank_weekly = pytest.mark.trinary_generic(_test_trinary_generic_high_rank_indexed_fused_scope)
+test_trinary_generic_complex_broadcast_weekly = pytest.mark.trinary_generic(_test_trinary_generic_complex_broadcast_indexed_fused_scope)
