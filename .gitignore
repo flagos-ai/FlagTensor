@@ -4,7 +4,13 @@ __pycache__/
 *.pyd
 .pytest_cache/
 benchmark/results_backup*/
+benchmark/results/
+ci_results/
 test_results/
-flagtensor_kernel_report.html
+weekly_results_*/
+weekly_results_ci/
+weekly_tests/__pycache__/
+weekly_benchmark/__pycache__/
+tools/__pycache__/
 src/flagtensor.egg-info/
 weekly_op_test.txt

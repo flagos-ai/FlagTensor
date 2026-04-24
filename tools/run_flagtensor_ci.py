@@ -3,6 +3,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import shutil
 import statistics
 import subprocess
@@ -66,7 +67,26 @@ def load_ops(op=None, op_list=None):
         return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
     if op:
         return [op]
-    raise ValueError("either --op or --op-list is required")
+    return discover_ops()
+
+
+def filter_ops(ops, exclude_ops=None):
+    excluded = {item.strip().lower() for item in (exclude_ops or []) if item and item.strip()}
+    return [op for op in ops if op.lower() not in excluded]
+
+
+def discover_ops():
+    pattern = re.compile(r"test_CUTENSOR_OP_(?P<name>[A-Z0-9_]+)(?:_perf)?\.py$")
+    ops = set()
+    for directory in (ROOT / "ctests", ROOT / "benchmark"):
+        if not directory.exists():
+            continue
+        for path in directory.glob("test_CUTENSOR_OP_*.py"):
+            match = pattern.match(path.name)
+            if not match:
+                continue
+            ops.add(match.group("name").lower())
+    return sorted(ops)
 
 
 def uppercase_op(op: str) -> str:
@@ -120,7 +140,7 @@ def run_correctness(op: str, results_dir: Path, env):
             "test_path": str(test_path),
         }
     log_path = results_dir / op / "correctness.log"
-    cmd = f"pytest -vs {test_path.name}"
+    cmd = f"{sys.executable} -m pytest -vs {test_path.name}"
     code, output = run_cmd(cmd, cwd=test_path.parent, env=env)
     write_text(log_path, output)
     return {
@@ -131,9 +151,9 @@ def run_correctness(op: str, results_dir: Path, env):
     }
 
 
-def smoke_env(base_env, smoke: bool, dtypes=None, max_shapes=None, warmup=None, repetitions=None):
+def smoke_env(base_env, smoke: bool, mode: str = "kernel", dtypes=None, max_shapes=None, warmup=None, repetitions=None):
     env = dict(base_env)
-    env["FLAGTENSOR_BENCHMARK_MODE"] = "kernel"
+    env["FLAGTENSOR_BENCHMARK_MODE"] = mode
     if smoke:
         env.setdefault("FLAGTENSOR_BENCHMARK_WARMUP", "2")
         env.setdefault("FLAGTENSOR_BENCHMARK_REPETITIONS", "5")
@@ -161,11 +181,13 @@ def run_perf(op: str, results_dir: Path, env, suffix: str = "perf"):
             "benchmark_csv": None,
         }
     log_path = results_dir / op / f"{suffix}.log"
-    cmd = f"pytest -vs {test_path.name}"
+    cmd = f"{sys.executable} -m pytest -vs {test_path.name}"
     code, output = run_cmd(cmd, cwd=test_path.parent, env=env)
     write_text(log_path, output)
     benchmark_dir = ROOT / "benchmark" / "results" / f"CUTENSOR_OP_{uppercase_op(op)}"
     benchmark_csv = benchmark_dir / "benchmark_kernel.csv"
+    if not benchmark_csv.exists():
+        benchmark_csv = benchmark_dir / "benchmark.csv"
     copied_csv = None
     speedup_stats = {"avg_speedup": None, "max_speedup": None, "row_count": 0}
     if benchmark_csv.exists():
@@ -194,10 +216,10 @@ def clear_libtuner_cache():
     return str(db_path)
 
 
-def run_libtuner_compare(op: str, results_dir: Path, base_env, smoke: bool, dtypes=None, max_shapes=None, warmup=None, repetitions=None):
+def run_libtuner_compare(op: str, results_dir: Path, base_env, smoke: bool, mode: str = "kernel", dtypes=None, max_shapes=None, warmup=None, repetitions=None):
     cache_path = clear_libtuner_cache()
-    cold_env = smoke_env(base_env, smoke, dtypes=dtypes, max_shapes=max_shapes, warmup=warmup, repetitions=repetitions)
-    warm_env = smoke_env(base_env, smoke, dtypes=dtypes, max_shapes=max_shapes, warmup=warmup, repetitions=repetitions)
+    cold_env = smoke_env(base_env, smoke, mode=mode, dtypes=dtypes, max_shapes=max_shapes, warmup=warmup, repetitions=repetitions)
+    warm_env = smoke_env(base_env, smoke, mode=mode, dtypes=dtypes, max_shapes=max_shapes, warmup=warmup, repetitions=repetitions)
     cold = run_perf(op, results_dir, cold_env, suffix="perf_cold")
     warm = run_perf(op, results_dir, warm_env, suffix="perf_warm")
     return {
@@ -211,11 +233,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--op", default=None)
     parser.add_argument("--op-list", default=None)
+    parser.add_argument("--exclude-op", action="append", default=None)
     parser.add_argument("--results-dir", default=None)
     parser.add_argument("--run-correctness", action="store_true")
     parser.add_argument("--run-perf", action="store_true")
     parser.add_argument("--run-libtuner-compare", action="store_true")
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--mode", choices=["kernel", "operator", "wrapper"], default="kernel")
     parser.add_argument("--dtypes", default=None)
     parser.add_argument("--max-shapes", type=int, default=None)
     parser.add_argument("--warmup", type=int, default=None)
@@ -223,7 +247,7 @@ def main():
     parser.add_argument("--cuda-visible-devices", default=None)
     args = parser.parse_args()
 
-    ops = load_ops(op=args.op, op_list=args.op_list)
+    ops = filter_ops(load_ops(op=args.op, op_list=args.op_list), exclude_ops=args.exclude_op)
     results_dir = Path(args.results_dir).resolve() if args.results_dir else ROOT / "ci_results"
     ensure_dir(results_dir)
 
@@ -248,6 +272,7 @@ def main():
     perf_env = smoke_env(
         base_env,
         args.smoke,
+        mode=args.mode,
         dtypes=args.dtypes,
         max_shapes=args.max_shapes,
         warmup=args.warmup,
@@ -266,6 +291,7 @@ def main():
                 results_dir,
                 base_env,
                 smoke=args.smoke,
+                mode=args.mode,
                 dtypes=args.dtypes,
                 max_shapes=args.max_shapes,
                 warmup=args.warmup,
