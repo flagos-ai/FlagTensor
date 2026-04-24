@@ -14,3 +14,4 @@ weekly_benchmark/__pycache__/
 tools/__pycache__/
 src/flagtensor.egg-info/
 weekly_op_test.txt
+ci_results/
