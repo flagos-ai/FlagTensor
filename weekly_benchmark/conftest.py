@@ -97,12 +97,14 @@ def pytest_configure(config):
         "asinh",
         "atan",
         "atanh",
+        "block_sparse_tensor_contraction",
         "ceil",
         "conj",
         "cos",
         "cosh",
         "exp",
         "floor",
+        "gett",
         "identity",
         "log",
         "max",
@@ -122,5 +124,10 @@ def pytest_configure(config):
         "swish",
         "tan",
         "tanh",
+        "tensor_contraction_trinary",
+        "tgett",
+        "trinary",
+        "trinary_generic",
+        "ttgt",
     ]:
-        config.addinivalue_line("markers", f"{marker}: weekly compatibility marker")
+        config.addinivalue_line("markers", f"{marker}: weekly benchmark marker")

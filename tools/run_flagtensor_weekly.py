@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -77,7 +78,7 @@ def run_accuracy(op, gpu_id, project_root, op_dir):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     weekly_tests_dir = os.path.join(project_root, "weekly_tests")
-    cmd = f'pytest -m "{op}" --ref cpu -vs'
+    cmd = f'{sys.executable} -m pytest -m "{op}" --ref cpu -vs'
     out, err, code = run_cmd_capture(cmd, cwd=weekly_tests_dir, env=env)
     combined = out + "\n" + err
     log_path = os.path.join(op_dir, "accuracy.log")
@@ -104,9 +105,9 @@ def run_accuracy(op, gpu_id, project_root, op_dir):
 def run_benchmark(op, gpu_id, project_root, op_dir):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    env["FLAGTENSOR_BENCHMARK_MODE"] = "kernel"
+    env.setdefault("FLAGTENSOR_BENCHMARK_MODE", "kernel")
     weekly_benchmark_dir = os.path.join(project_root, "weekly_benchmark")
-    cmd = f'pytest -m "{op}" --level core --record log -vs'
+    cmd = f'{sys.executable} -m pytest -m "{op}" --level core --record log -vs'
     out, err, code = run_cmd_capture(cmd, cwd=weekly_benchmark_dir, env=env)
     combined = out + "\n" + err
     log_path = os.path.join(op_dir, "perf.log")
@@ -232,11 +233,13 @@ def main():
     parser.add_argument("--project-root", required=True)
     parser.add_argument("--op-list", required=True)
     parser.add_argument("--gpus", default="0")
+    parser.add_argument("--mode", choices=["kernel", "operator", "wrapper"], default="kernel")
     parser.add_argument("--results-dir", default=None)
     args = parser.parse_args()
 
     with open(args.op_list, encoding="utf-8") as f:
         ops = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    os.environ["FLAGTENSOR_BENCHMARK_MODE"] = args.mode
     gpus = [int(item) for item in args.gpus.split(",") if item.strip()]
     results_dir = args.results_dir or os.path.join(args.project_root, f"weekly_results_{now_ts()}")
     ensure_dir(results_dir)

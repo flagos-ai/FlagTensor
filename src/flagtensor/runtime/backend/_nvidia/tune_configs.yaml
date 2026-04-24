@@ -35,6 +35,24 @@ elementwise_binary:
       - 2
       - 3
 
+elementwise_trinary:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 2
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+
 CUTENSOR_OP_ADD:
   - META:
       BLOCK_SIZE: 256

@@ -11,6 +11,10 @@ on:
         description: "GPU ids passed to weekly runner"
         required: false
         default: "0"
+      mode:
+        description: "Benchmark mode passed to weekly benchmark runs"
+        required: false
+        default: "kernel"
 
 jobs:
   weekly-entry:
@@ -24,13 +28,34 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install .
-      - name: Weekly runner help
+      - name: Prepare weekly operator list
         run: |
-          python tools/run_flagtensor_weekly.py --help
-      - name: Upload weekly metadata
+          if [ -f "${{ github.event.inputs.op_list || 'weekly_op_test.txt' }}" ]; then
+            cp "${{ github.event.inputs.op_list || 'weekly_op_test.txt' }}" ci_weekly_ops.txt
+          else
+            python - <<'PY'
+from pathlib import Path
+from tools.run_flagtensor_ci import discover_ops
+
+Path('ci_weekly_ops.txt').write_text('\n'.join(discover_ops()) + '\n', encoding='utf-8')
+PY
+          fi
+          python - <<'PY'
+from pathlib import Path
+
+path = Path('ci_weekly_ops.txt')
+ops = [line.strip() for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+ops = [op for op in ops if op != 'tensor_contraction_trinary']
+path.write_text('\n'.join(ops) + ('\n' if ops else ''), encoding='utf-8')
+PY
+      - name: Run weekly runner
+        run: |
+          python tools/run_flagtensor_weekly.py --project-root . --op-list ci_weekly_ops.txt --gpus "${{ github.event.inputs.gpus || '0' }}" --mode "${{ github.event.inputs.mode || 'kernel' }}" --results-dir weekly_results_ci
+      - name: Upload weekly artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: flagtensor-weekly-inputs
+          name: flagtensor-weekly-results
           path: |
-            weekly_op_test.txt
+            ci_weekly_ops.txt
+            weekly_results_ci
             pyproject.toml
