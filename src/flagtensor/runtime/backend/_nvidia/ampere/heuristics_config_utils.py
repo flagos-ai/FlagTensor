@@ -25,4 +25,8 @@ HEURISTICS_CONFIGS = {
         'BLOCK_SIZE': simple_elementwise_blocksize_heur,
         'BLOCKS_PER_PROGRAM': simple_elementwise_blocks_per_program_heur,
     },
+    'elementwise_trinary': {
+        'BLOCK_SIZE': simple_elementwise_blocksize_heur,
+        'BLOCKS_PER_PROGRAM': simple_elementwise_blocks_per_program_heur,
+    },
 }

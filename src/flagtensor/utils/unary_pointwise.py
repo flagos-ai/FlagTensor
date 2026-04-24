@@ -664,6 +664,50 @@ def _default_prepare(x: torch.Tensor) -> Tuple[Optional[torch.Tensor], torch.Ten
     return None, x
 
 
+class _UnaryPointwiseExecutor:
+    def __init__(self, kernel, prepare_input, fallback_float64):
+        self.kernel = kernel
+        self.prepare_input = prepare_input
+        self.fallback_float64 = fallback_float64
+        self.layout_cache = {}
+
+    def _layout_key(self, x: torch.Tensor):
+        return (
+            x.dtype,
+            tuple(x.shape),
+            x.stride(),
+            x.is_contiguous(),
+        )
+
+    def _build_plan(self, prepared_x: torch.Tensor):
+        return {
+            "contiguous": prepared_x.is_contiguous(),
+        }
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        if not x.is_cuda:
+            raise ValueError("input tensor must be on CUDA")
+        handled, prepared_x = self.prepare_input(x)
+        if handled is not None:
+            return handled
+        if prepared_x.dtype == torch.float64 and self.fallback_float64 is not None:
+            return self.fallback_float64(prepared_x)
+
+        layout_key = self._layout_key(prepared_x)
+        plan = self.layout_cache.get(layout_key)
+        if plan is None:
+            plan = self._build_plan(prepared_x)
+            self.layout_cache[layout_key] = plan
+
+        y = torch.empty_like(prepared_x)
+        n_elements = y.numel()
+        grid = lambda meta: (
+            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
+        )
+        self.kernel[grid](prepared_x, y, n_elements)
+        return y
+
+
 def make_unary_pointwise(
     op_name: str,
     variant0,
@@ -676,22 +720,10 @@ def make_unary_pointwise(
 ):
     kernel = _build_unary_kernel(op_name, variant0, variant1)
     prepare = prepare_input or _default_prepare
+    executor = _UnaryPointwiseExecutor(kernel, prepare, fallback_float64)
 
     def op(x: torch.Tensor) -> torch.Tensor:
-        if not x.is_cuda:
-            raise ValueError("input tensor must be on CUDA")
-        handled, prepared_x = prepare(x)
-        if handled is not None:
-            return handled
-        if prepared_x.dtype == torch.float64 and fallback_float64 is not None:
-            return fallback_float64(prepared_x)
-        y = torch.empty_like(prepared_x)
-        n_elements = y.numel()
-        grid = lambda meta: (
-            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-        )
-        kernel[grid](prepared_x, y, n_elements)
-        return y
+        return executor(x)
 
     op.__name__ = op_name
     return kernel, op

@@ -1,6 +1,7 @@
 from dataclasses import asdict, dataclass
 import importlib
 import os
+import time
 from typing import Callable, Generator, List, Optional, Sequence, Tuple
 
 import torch
@@ -28,7 +29,7 @@ def _env_mode(default: str) -> str:
     if value is None or value == "":
         return default
     mode = value.strip().lower()
-    if mode not in {"kernel", "operator"}:
+    if mode not in {"kernel", "operator", "wrapper"}:
         raise ValueError(f"unsupported benchmark mode: {mode}")
     return mode
 
@@ -196,6 +197,21 @@ class Benchmark:
 
         return run_kernel
 
+    def _build_trinary_triton_kernel_callable(self, kernel, x, y, z):
+        if kernel is None:
+            return None
+        out = torch.empty_like(z)
+        n_elements = out.numel()
+        grid = lambda meta: (
+            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
+        )
+
+        def run_kernel():
+            kernel[grid](x, y, z, out, n_elements)
+            return out
+
+        return run_kernel
+
     def _build_binary_triton_kernel_callable(self, kernel, x, y):
         if kernel is None:
             return None
@@ -217,6 +233,8 @@ class Benchmark:
             return self._build_unary_triton_kernel_callable(kernel, args[0])
         if len(args) == 2:
             return self._build_binary_triton_kernel_callable(kernel, args[0], args[1])
+        if len(args) == 3:
+            return self._build_trinary_triton_kernel_callable(kernel, args[0], args[1], args[2])
         return None
 
     def build_baseline_kernel_callable(self, *args) -> Optional[Callable[[], torch.Tensor]]:
@@ -227,38 +245,64 @@ class Benchmark:
             return None
         return baseline.build_kernel_callable(*args)
 
-    def time_operator(self, fn: Callable, *args) -> Tuple[float, torch.Tensor]:
+    def build_triton_wrapper_callable(self, *args) -> Optional[Callable[[], torch.Tensor]]:
+        return lambda: self.triton_impl(*args)
+
+    def build_baseline_wrapper_callable(self, *args) -> Optional[Callable[[], torch.Tensor]]:
+        if not self.cutensor_available:
+            return None
+        return lambda: self.baseline_impl(*args)
+
+    def _synchronize_device(self):
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+    def _time_host_loop(self, fn: Callable[[], torch.Tensor], *, synchronize_before_end: bool) -> Tuple[float, torch.Tensor]:
+        result = None
         for _ in range(self.config.warmup):
-            result = fn(*args)
-        torch.cuda.synchronize()
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
+            result = fn()
+        self._synchronize_device()
+        start = time.time()
         for _ in range(self.config.repetitions):
-            result = fn(*args)
-        end.record()
-        torch.cuda.synchronize()
-        return start.elapsed_time(end) / self.config.repetitions, result
+            result = fn()
+        if synchronize_before_end:
+            self._synchronize_device()
+        end = time.time()
+        return (end - start) / self.config.repetitions * 1000.0, result
+
+    def time_operator(self, fn: Callable, *args) -> Tuple[float, torch.Tensor]:
+        return self._time_host_loop(lambda: fn(*args), synchronize_before_end=True)
 
     def time_kernel(self, fn: Callable[[], torch.Tensor]) -> Tuple[float, torch.Tensor]:
         result = None
         for _ in range(self.config.warmup):
             result = fn()
-        torch.cuda.synchronize()
+        self._synchronize_device()
         latency = triton.testing.do_bench(
             fn,
             warmup=self.config.warmup,
             rep=self.config.repetitions,
             return_mode="median",
         )
-        torch.cuda.synchronize()
+        self._synchronize_device()
         result = fn()
-        torch.cuda.synchronize()
+        self._synchronize_device()
         return latency, result
 
-    def time_function(self, operator_fn: Callable, kernel_fn: Optional[Callable], *args) -> Tuple[float, torch.Tensor]:
+    def time_wrapper(self, fn: Callable[[], torch.Tensor]) -> Tuple[float, torch.Tensor]:
+        return self._time_host_loop(fn, synchronize_before_end=False)
+
+    def time_function(
+        self,
+        operator_fn: Callable,
+        kernel_fn: Optional[Callable],
+        wrapper_fn: Optional[Callable],
+        *args,
+    ) -> Tuple[float, torch.Tensor]:
         if self.config.mode == "kernel" and kernel_fn is not None:
             return self.time_kernel(kernel_fn)
+        if self.config.mode == "wrapper" and wrapper_fn is not None:
+            return self.time_wrapper(wrapper_fn)
         return self.time_operator(operator_fn, *args)
 
     def run(self) -> List[BenchmarkMetrics]:
@@ -269,22 +313,40 @@ class Benchmark:
                 shape = tuple(args[0].shape)
                 reference = self.reference_impl(*args)
                 triton_kernel = self.build_triton_kernel_callable(*args)
+                triton_wrapper = self.build_triton_wrapper_callable(*args)
                 baseline_latency = None
                 baseline_kernel = None
+                baseline_wrapper = None
+                selected_mode = "operator"
                 use_kernel_mode = self.config.mode == "kernel"
                 if self.cutensor_available:
                     baseline_kernel = self.build_baseline_kernel_callable(*args)
+                    baseline_wrapper = self.build_baseline_wrapper_callable(*args)
                     use_kernel_mode = use_kernel_mode and triton_kernel is not None and baseline_kernel is not None
                 else:
                     use_kernel_mode = use_kernel_mode and triton_kernel is not None
 
-                triton_fn = triton_kernel if use_kernel_mode else None
-                latency, triton_out = self.time_function(self.triton_impl, triton_fn, *args)
+                if use_kernel_mode:
+                    selected_mode = "kernel"
+                elif self.config.mode == "wrapper":
+                    if self.cutensor_available:
+                        if triton_wrapper is not None and baseline_wrapper is not None:
+                            selected_mode = "wrapper"
+                    elif triton_wrapper is not None:
+                        selected_mode = "wrapper"
+
+                latency, triton_out = self.time_function(
+                    self.triton_impl,
+                    triton_kernel if selected_mode == "kernel" else None,
+                    triton_wrapper if selected_mode == "wrapper" else None,
+                    *args,
+                )
 
                 if self.cutensor_available:
                     baseline_latency, baseline_out = self.time_function(
                         self.baseline_impl,
-                        baseline_kernel if use_kernel_mode else None,
+                        baseline_kernel if selected_mode == "kernel" else None,
+                        baseline_wrapper if selected_mode == "wrapper" else None,
                         *args,
                     )
                     if not self.verify(reference, baseline_out, dtype):
@@ -297,7 +359,7 @@ class Benchmark:
                 metric = BenchmarkMetrics(
                     shape=shape,
                     dtype=str(dtype),
-                    mode="kernel" if use_kernel_mode else "operator",
+                    mode=selected_mode,
                     latency=latency,
                     latency_base=baseline_latency,
                     speedup=(baseline_latency / latency) if baseline_latency else None,
