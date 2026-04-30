@@ -10,7 +10,16 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from env_utils import build_env_payload
+from flagtensor_registry import filter_operator_specs
+from flagtensor_registry import load_operator_registry
 
 SUMMARY_LOCK = threading.Lock()
 GLOBAL_RESULTS = {}
@@ -23,10 +32,24 @@ def ensure_dir(path):
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
+def load_ops(op_list=None, category=None, registry=None, include_blocked=False, mode=None):
+    specs = load_operator_registry(registry_path=registry)
+    selected = []
+    if op_list:
+        with open(op_list, encoding="utf-8") as f:
+            selected = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    filtered = filter_operator_specs(
+        specs,
+        names=selected or None,
+        categories=category,
+        include_blocked=include_blocked,
+        mode=mode,
+    )
+    return [spec.name for spec in filtered]
+
 
 def now_ts():
     return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
 
 
 def run_cmd_capture(cmd, cwd=None, env=None):
@@ -43,7 +66,6 @@ def run_cmd_capture(cmd, cwd=None, env=None):
     return out or "", err or "", process.returncode
 
 
-
 def parse_pytest_summary_from_text(text):
     counters = {"passed": 0, "failed": 0, "skipped": 0, "errors": 0}
     for name in counters:
@@ -52,7 +74,6 @@ def parse_pytest_summary_from_text(text):
             counters[name] = int(match.group(1))
     total = counters["passed"] + counters["failed"] + counters["skipped"]
     return counters, total
-
 
 
 def parse_perf_rows(text):
@@ -71,7 +92,6 @@ def parse_perf_rows(text):
             }
         )
     return rows
-
 
 
 def run_accuracy(op, gpu_id, project_root, op_dir):
@@ -101,7 +121,6 @@ def run_accuracy(op, gpu_id, project_root, op_dir):
     }
 
 
-
 def run_benchmark(op, gpu_id, project_root, op_dir):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
@@ -125,7 +144,6 @@ def run_benchmark(op, gpu_id, project_root, op_dir):
         "avg_speedup": avg_speedup,
         "max_speedup": max_speedup,
     }
-
 
 
 def write_summary(summary_map, results_dir):
@@ -209,7 +227,6 @@ def write_env(project_root, results_dir):
         json.dump(payload, f, indent=2)
 
 
-
 def worker_process_ops(gpu_id, ops_list, project_root, results_dir):
     for op in ops_list:
         if not op:
@@ -227,18 +244,27 @@ def worker_process_ops(gpu_id, ops_list, project_root, results_dir):
             write_summary(GLOBAL_RESULTS, results_dir)
 
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", required=True)
-    parser.add_argument("--op-list", required=True)
+    parser.add_argument("--op-list", required=False)
+    parser.add_argument("--category", action="append", default=None)
+    parser.add_argument("--registry", default=None)
+    parser.add_argument("--include-blocked", action="store_true")
     parser.add_argument("--gpus", default="0")
     parser.add_argument("--mode", choices=["kernel", "operator", "wrapper"], default="kernel")
     parser.add_argument("--results-dir", default=None)
     args = parser.parse_args()
 
-    with open(args.op_list, encoding="utf-8") as f:
-        ops = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    ops = load_ops(
+        op_list=args.op_list,
+        category=args.category,
+        registry=args.registry,
+        include_blocked=args.include_blocked,
+        mode=args.mode,
+    )
+    if not ops:
+        raise SystemExit("No operators selected from registry/op-list")
     os.environ["FLAGTENSOR_BENCHMARK_MODE"] = args.mode
     gpus = [int(item) for item in args.gpus.split(",") if item.strip()]
     results_dir = args.results_dir or os.path.join(args.project_root, f"weekly_results_{now_ts()}")

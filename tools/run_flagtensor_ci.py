@@ -24,6 +24,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from env_utils import build_env_payload
+from flagtensor_registry import filter_operator_specs
+from flagtensor_registry import get_operator_map
+from flagtensor_registry import load_operator_registry
 
 
 def ensure_dir(path: Path):
@@ -86,13 +89,23 @@ def load_speedup_stats(csv_path: Path):
     }
 
 
-def load_ops(op=None, op_list=None):
+def load_ops(op=None, op_list=None, category=None, mode=None, exclude_ops=None, include_blocked=False, registry_path=None):
+    specs = load_operator_registry(registry_path=registry_path)
+    requested_ops = []
     if op_list:
         lines = Path(op_list).read_text(encoding="utf-8").splitlines()
-        return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
+        requested_ops = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
     if op:
-        return [op]
-    return discover_ops()
+        requested_ops.append(op)
+    filtered = filter_operator_specs(
+        specs,
+        names=requested_ops or None,
+        exclude_names=exclude_ops,
+        categories=category,
+        mode=mode,
+        include_blocked=include_blocked,
+    )
+    return [spec.name for spec in filtered]
 
 
 def filter_ops(ops, exclude_ops=None):
@@ -101,21 +114,15 @@ def filter_ops(ops, exclude_ops=None):
 
 
 def discover_ops():
-    pattern = re.compile(r"test_CUTENSOR_OP_(?P<name>[A-Z0-9_]+)(?:_perf)?\.py$")
-    ops = set()
-    for directory in (ROOT / "ctests", ROOT / "benchmark"):
-        if not directory.exists():
-            continue
-        for path in directory.glob("test_CUTENSOR_OP_*.py"):
-            match = pattern.match(path.name)
-            if not match:
-                continue
-            ops.add(match.group("name").lower())
-    return sorted(ops)
+    return [spec.name for spec in load_operator_registry()]
 
 
 def uppercase_op(op: str) -> str:
     return op.upper()
+
+
+def correctness_suite_path() -> Path:
+    return ROOT / "tests"
 
 
 def correctness_test_path(op: str) -> Path:
@@ -124,6 +131,17 @@ def correctness_test_path(op: str) -> Path:
 
 def benchmark_test_path(op: str) -> Path:
     return ROOT / "benchmark" / f"test_CUTENSOR_OP_{uppercase_op(op)}_perf.py"
+
+
+def benchmark_csv_path(op: str, mode: str) -> Path:
+    benchmark_dir = ROOT / "benchmark" / "results" / f"CUTENSOR_OP_{uppercase_op(op)}"
+    mode_csv = benchmark_dir / f"benchmark_{mode}.csv"
+    if mode_csv.exists():
+        return mode_csv
+    fallback_csv = benchmark_dir / "benchmark.csv"
+    if fallback_csv.exists():
+        return fallback_csv
+    return mode_csv
 
 
 def export_environment(results_dir: Path):
@@ -191,9 +209,16 @@ def log_run_summary(summary: dict) -> None:
 
 
 def run_correctness(op: str, results_dir: Path, env, stream_subprocess: bool = False):
+    suite_path = correctness_suite_path()
     test_path = correctness_test_path(op)
-    if not test_path.exists():
-        log(f"correctness skip {op}: missing {test_path}")
+    if suite_path.exists():
+        target_path = suite_path
+        cmd = f'{sys.executable} -m pytest -vs {suite_path.name} -m "{op}"'
+    elif test_path.exists():
+        target_path = test_path
+        cmd = f"{sys.executable} -m pytest -vs {test_path.name}"
+    else:
+        log(f"correctness skip {op}: missing {suite_path} and {test_path}")
         return {
             "status": "MISSING",
             "exit_code": 1,
@@ -201,10 +226,9 @@ def run_correctness(op: str, results_dir: Path, env, stream_subprocess: bool = F
             "test_path": str(test_path),
         }
     log_path = results_dir / op / "correctness.log"
-    cmd = f"{sys.executable} -m pytest -vs {test_path.name}"
     code, output = run_cmd(
         cmd,
-        cwd=test_path.parent,
+        cwd=target_path.parent,
         env=env,
         stream_to_terminal=stream_subprocess,
         label=f"correctness:{op}",
@@ -214,27 +238,8 @@ def run_correctness(op: str, results_dir: Path, env, stream_subprocess: bool = F
         "status": "PASS" if code == 0 else "FAIL",
         "exit_code": code,
         "log_path": str(log_path),
-        "test_path": str(test_path),
+        "test_path": str(target_path),
     }
-
-
-def smoke_env(base_env, smoke: bool, mode: str = "kernel", dtypes=None, max_shapes=None, warmup=None, repetitions=None):
-    env = dict(base_env)
-    env["FLAGTENSOR_BENCHMARK_MODE"] = mode
-    if smoke:
-        env.setdefault("FLAGTENSOR_BENCHMARK_WARMUP", "2")
-        env.setdefault("FLAGTENSOR_BENCHMARK_REPETITIONS", "5")
-        env.setdefault("FLAGTENSOR_BENCHMARK_MAX_SHAPES", "2")
-        env.setdefault("FLAGTENSOR_BENCHMARK_DTYPES", "float16")
-    if dtypes:
-        env["FLAGTENSOR_BENCHMARK_DTYPES"] = dtypes
-    if max_shapes is not None:
-        env["FLAGTENSOR_BENCHMARK_MAX_SHAPES"] = str(max_shapes)
-    if warmup is not None:
-        env["FLAGTENSOR_BENCHMARK_WARMUP"] = str(warmup)
-    if repetitions is not None:
-        env["FLAGTENSOR_BENCHMARK_REPETITIONS"] = str(repetitions)
-    return env
 
 
 def run_perf(op: str, results_dir: Path, env, suffix: str = "perf", stream_subprocess: bool = False):
@@ -258,10 +263,8 @@ def run_perf(op: str, results_dir: Path, env, suffix: str = "perf", stream_subpr
         label=f"perf:{op}:{suffix}",
     )
     write_text(log_path, output)
-    benchmark_dir = ROOT / "benchmark" / "results" / f"CUTENSOR_OP_{uppercase_op(op)}"
-    benchmark_csv = benchmark_dir / "benchmark_kernel.csv"
-    if not benchmark_csv.exists():
-        benchmark_csv = benchmark_dir / "benchmark.csv"
+    benchmark_mode = env.get("FLAGTENSOR_BENCHMARK_MODE", "kernel")
+    benchmark_csv = benchmark_csv_path(op, benchmark_mode)
     copied_csv = None
     speedup_stats = {"avg_speedup": None, "max_speedup": None, "row_count": 0}
     if benchmark_csv.exists():
@@ -318,11 +321,33 @@ def run_libtuner_compare(
     }
 
 
+def smoke_env(base_env, smoke: bool, mode: str = "kernel", dtypes=None, max_shapes=None, warmup=None, repetitions=None):
+    env = dict(base_env)
+    env["FLAGTENSOR_BENCHMARK_MODE"] = mode
+    if smoke:
+        env.setdefault("FLAGTENSOR_BENCHMARK_WARMUP", "2")
+        env.setdefault("FLAGTENSOR_BENCHMARK_REPETITIONS", "5")
+        env.setdefault("FLAGTENSOR_BENCHMARK_MAX_SHAPES", "2")
+        env.setdefault("FLAGTENSOR_BENCHMARK_DTYPES", "float16")
+    if dtypes:
+        env["FLAGTENSOR_BENCHMARK_DTYPES"] = dtypes
+    if max_shapes is not None:
+        env["FLAGTENSOR_BENCHMARK_MAX_SHAPES"] = str(max_shapes)
+    if warmup is not None:
+        env["FLAGTENSOR_BENCHMARK_WARMUP"] = str(warmup)
+    if repetitions is not None:
+        env["FLAGTENSOR_BENCHMARK_REPETITIONS"] = str(repetitions)
+    return env
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--op", default=None)
     parser.add_argument("--op-list", default=None)
+    parser.add_argument("--category", action="append", default=None)
     parser.add_argument("--exclude-op", action="append", default=None)
+    parser.add_argument("--include-blocked", action="store_true")
+    parser.add_argument("--registry", default=None)
     parser.add_argument("--results-dir", default=None)
     parser.add_argument("--run-correctness", action="store_true")
     parser.add_argument("--run-perf", action="store_true")
@@ -347,7 +372,16 @@ def main():
     )
     args = parser.parse_args()
 
-    ops = filter_ops(load_ops(op=args.op, op_list=args.op_list), exclude_ops=args.exclude_op)
+    registry_map = get_operator_map(registry_path=args.registry)
+    ops = load_ops(
+        op=args.op,
+        op_list=args.op_list,
+        category=args.category,
+        mode=args.mode,
+        exclude_ops=args.exclude_op,
+        include_blocked=args.include_blocked,
+        registry_path=args.registry,
+    )
     results_dir = Path(args.results_dir).resolve() if args.results_dir else ROOT / "ci_results"
     ensure_dir(results_dir)
 
@@ -391,6 +425,9 @@ def main():
     for i, op in enumerate(ops, start=1):
         log(f"--- operator {i}/{len(ops)}: {op!r} ---")
         ensure_dir(results_dir / op)
+        spec = registry_map.get(op)
+        if spec and spec.is_blocked:
+            log(f"{op}: blocked in registry ({spec.skip_reason or 'no reason provided'})")
         if args.run_correctness:
             log(f"{op}: correctness starting")
             summary["correctness"][op] = run_correctness(op, results_dir, base_env, stream_subprocess=stream)

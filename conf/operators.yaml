@@ -1,0 +1,382 @@
+operators:
+  - name: abs
+    category: unary
+    python_api: flagtensor.abs
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_ABS.py
+    correctness_test: ctests/test_CUTENSOR_OP_ABS.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_ABS_perf.py
+    correctness_mark: abs
+    benchmark_mark: abs
+    benchmark_modes: [operator]
+    status: stable
+  - name: acos
+    category: unary
+    python_api: flagtensor.acos
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_ACOS.py
+    correctness_test: ctests/test_CUTENSOR_OP_ACOS.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_ACOS_perf.py
+    correctness_mark: acos
+    benchmark_mark: acos
+    benchmark_modes: [kernel, operator, wrapper]
+    status: stable
+  - name: acosh
+    category: unary
+    python_api: flagtensor.acosh
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_ACOSH.py
+    correctness_test: ctests/test_CUTENSOR_OP_ACOSH.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_ACOSH_perf.py
+    correctness_mark: acosh
+    benchmark_mark: acosh
+    benchmark_modes: [operator]
+    status: stable
+  - name: add
+    category: binary
+    python_api: flagtensor.add
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_ADD.py
+    correctness_test: ctests/test_CUTENSOR_OP_ADD.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_ADD_perf.py
+    correctness_mark: add
+    benchmark_mark: add
+    benchmark_modes: [operator]
+    status: stable
+  - name: asin
+    category: unary
+    python_api: flagtensor.asin
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_ASIN.py
+    correctness_test: ctests/test_CUTENSOR_OP_ASIN.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_ASIN_perf.py
+    correctness_mark: asin
+    benchmark_mark: asin
+    benchmark_modes: [operator]
+    status: stable
+  - name: asinh
+    category: unary
+    python_api: flagtensor.asinh
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_ASINH.py
+    correctness_test: ctests/test_CUTENSOR_OP_ASINH.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_ASINH_perf.py
+    correctness_mark: asinh
+    benchmark_mark: asinh
+    benchmark_modes: [operator]
+    status: stable
+  - name: atan
+    category: unary
+    python_api: flagtensor.atan
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_ATAN.py
+    correctness_test: ctests/test_CUTENSOR_OP_ATAN.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_ATAN_perf.py
+    correctness_mark: atan
+    benchmark_mark: atan
+    benchmark_modes: [operator]
+    status: stable
+  - name: atanh
+    category: unary
+    python_api: flagtensor.atanh
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_ATANH.py
+    correctness_test: ctests/test_CUTENSOR_OP_ATANH.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_ATANH_perf.py
+    correctness_mark: atanh
+    benchmark_mark: atanh
+    benchmark_modes: [operator]
+    status: stable
+  - name: block_sparse_tensor_contraction
+    category: sparse
+    python_api: flagtensor.block_sparse_tensor_contraction
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION.py
+    correctness_test: ctests/test_CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION_perf.py
+    correctness_mark: block_sparse_tensor_contraction
+    benchmark_mark: block_sparse_tensor_contraction
+    benchmark_modes: [operator]
+    status: experimental
+  - name: ceil
+    category: unary
+    python_api: flagtensor.ceil
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_CEIL.py
+    correctness_test: ctests/test_CUTENSOR_OP_CEIL.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_CEIL_perf.py
+    correctness_mark: ceil
+    benchmark_mark: ceil
+    benchmark_modes: [operator]
+    status: stable
+  - name: conj
+    category: unary
+    python_api: flagtensor.conj
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_CONJ.py
+    correctness_test: ctests/test_CUTENSOR_OP_CONJ.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_CONJ_perf.py
+    correctness_mark: conj
+    benchmark_mark: conj
+    benchmark_modes: [operator]
+    status: stable
+  - name: cos
+    category: unary
+    python_api: flagtensor.cos
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_COS.py
+    correctness_test: ctests/test_CUTENSOR_OP_COS.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_COS_perf.py
+    correctness_mark: cos
+    benchmark_mark: cos
+    benchmark_modes: [operator]
+    status: stable
+  - name: cosh
+    category: unary
+    python_api: flagtensor.cosh
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_COSH.py
+    correctness_test: ctests/test_CUTENSOR_OP_COSH.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_COSH_perf.py
+    correctness_mark: cosh
+    benchmark_mark: cosh
+    benchmark_modes: [operator]
+    status: stable
+  - name: exp
+    category: unary
+    python_api: flagtensor.exp
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_EXP.py
+    correctness_test: ctests/test_CUTENSOR_OP_EXP.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_EXP_perf.py
+    correctness_mark: exp
+    benchmark_mark: exp
+    benchmark_modes: [operator]
+    status: stable
+  - name: floor
+    category: unary
+    python_api: flagtensor.floor
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_FLOOR.py
+    correctness_test: ctests/test_CUTENSOR_OP_FLOOR.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_FLOOR_perf.py
+    correctness_mark: floor
+    benchmark_mark: floor
+    benchmark_modes: [operator]
+    status: stable
+  - name: gett
+    category: contraction
+    python_api: flagtensor.gett
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_GETT.py
+    correctness_test: ctests/test_CUTENSOR_OP_GETT.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_GETT_perf.py
+    correctness_mark: gett
+    benchmark_mark: gett
+    benchmark_modes: [kernel, operator]
+    status: stable
+  - name: identity
+    category: unary
+    python_api: flagtensor.identity
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_IDENTITY.py
+    correctness_test: ctests/test_CUTENSOR_OP_IDENTITY.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_IDENTITY_perf.py
+    correctness_mark: identity
+    benchmark_mark: identity
+    benchmark_modes: [operator]
+    status: stable
+  - name: log
+    category: unary
+    python_api: flagtensor.log
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_LOG.py
+    correctness_test: ctests/test_CUTENSOR_OP_LOG.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_LOG_perf.py
+    correctness_mark: log
+    benchmark_mark: log
+    benchmark_modes: [operator]
+    status: stable
+  - name: max
+    category: binary
+    python_api: flagtensor.max
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_MAX.py
+    correctness_test: ctests/test_CUTENSOR_OP_MAX.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_MAX_perf.py
+    correctness_mark: max
+    benchmark_mark: max
+    benchmark_modes: [operator]
+    status: stable
+  - name: min
+    category: binary
+    python_api: flagtensor.min
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_MIN.py
+    correctness_test: ctests/test_CUTENSOR_OP_MIN.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_MIN_perf.py
+    correctness_mark: min
+    benchmark_mark: min
+    benchmark_modes: [operator]
+    status: stable
+  - name: mish
+    category: unary
+    python_api: flagtensor.mish
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_MISH.py
+    correctness_test: ctests/test_CUTENSOR_OP_MISH.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_MISH_perf.py
+    correctness_mark: mish
+    benchmark_mark: mish
+    benchmark_modes: [operator]
+    status: stable
+  - name: mul
+    category: binary
+    python_api: flagtensor.mul
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_MUL.py
+    correctness_test: ctests/test_CUTENSOR_OP_MUL.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_MUL_perf.py
+    correctness_mark: mul
+    benchmark_mark: mul
+    benchmark_modes: [operator]
+    status: stable
+  - name: neg
+    category: unary
+    python_api: flagtensor.neg
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_NEG.py
+    correctness_test: ctests/test_CUTENSOR_OP_NEG.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_NEG_perf.py
+    correctness_mark: neg
+    benchmark_mark: neg
+    benchmark_modes: [operator]
+    status: stable
+  - name: rcp
+    category: unary
+    python_api: flagtensor.rcp
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_RCP.py
+    correctness_test: ctests/test_CUTENSOR_OP_RCP.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_RCP_perf.py
+    correctness_mark: rcp
+    benchmark_mark: rcp
+    benchmark_modes: [operator]
+    status: stable
+  - name: relu
+    category: unary
+    python_api: flagtensor.relu
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_RELU.py
+    correctness_test: ctests/test_CUTENSOR_OP_RELU.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_RELU_perf.py
+    correctness_mark: relu
+    benchmark_mark: relu
+    benchmark_modes: [operator]
+    status: stable
+  - name: sigmoid
+    category: unary
+    python_api: flagtensor.sigmoid
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_SIGMOID.py
+    correctness_test: ctests/test_CUTENSOR_OP_SIGMOID.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_SIGMOID_perf.py
+    correctness_mark: sigmoid
+    benchmark_mark: sigmoid
+    benchmark_modes: [operator]
+    status: stable
+  - name: sin
+    category: unary
+    python_api: flagtensor.sin
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_SIN.py
+    correctness_test: ctests/test_CUTENSOR_OP_SIN.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_SIN_perf.py
+    correctness_mark: sin
+    benchmark_mark: sin
+    benchmark_modes: [operator]
+    status: stable
+  - name: sinh
+    category: unary
+    python_api: flagtensor.sinh
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_SINH.py
+    correctness_test: ctests/test_CUTENSOR_OP_SINH.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_SINH_perf.py
+    correctness_mark: sinh
+    benchmark_mark: sinh
+    benchmark_modes: [operator]
+    status: stable
+  - name: soft_plus
+    category: unary
+    python_api: flagtensor.soft_plus
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_SOFT_PLUS.py
+    correctness_test: ctests/test_CUTENSOR_OP_SOFT_PLUS.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_SOFT_PLUS_perf.py
+    correctness_mark: soft_plus
+    benchmark_mark: soft_plus
+    benchmark_modes: [operator]
+    status: stable
+  - name: soft_sign
+    category: unary
+    python_api: flagtensor.soft_sign
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_SOFT_SIGN.py
+    correctness_test: ctests/test_CUTENSOR_OP_SOFT_SIGN.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_SOFT_SIGN_perf.py
+    correctness_mark: soft_sign
+    benchmark_mark: soft_sign
+    benchmark_modes: [operator]
+    status: stable
+  - name: sqrt
+    category: unary
+    python_api: flagtensor.sqrt
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_SQRT.py
+    correctness_test: ctests/test_CUTENSOR_OP_SQRT.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_SQRT_perf.py
+    correctness_mark: sqrt
+    benchmark_mark: sqrt
+    benchmark_modes: [operator]
+    status: stable
+  - name: swish
+    category: unary
+    python_api: flagtensor.swish
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_SWISH.py
+    correctness_test: ctests/test_CUTENSOR_OP_SWISH.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_SWISH_perf.py
+    correctness_mark: swish
+    benchmark_mark: swish
+    benchmark_modes: [operator]
+    status: stable
+  - name: tan
+    category: unary
+    python_api: flagtensor.tan
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_TAN.py
+    correctness_test: ctests/test_CUTENSOR_OP_TAN.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_TAN_perf.py
+    correctness_mark: tan
+    benchmark_mark: tan
+    benchmark_modes: [operator]
+    status: stable
+  - name: tanh
+    category: unary
+    python_api: flagtensor.tanh
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_TANH.py
+    correctness_test: ctests/test_CUTENSOR_OP_TANH.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_TANH_perf.py
+    correctness_mark: tanh
+    benchmark_mark: tanh
+    benchmark_modes: [operator]
+    status: stable
+  - name: tensor_contraction_trinary
+    category: contraction
+    python_api: flagtensor.tensor_contraction_trinary
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY.py
+    correctness_test: ctests/test_CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY_perf.py
+    correctness_mark: tensor_contraction_trinary
+    benchmark_mark: tensor_contraction_trinary
+    benchmark_modes: [kernel, operator]
+    status: blocked
+    skip_reason: float64 correctness path is not yet stable in CI
+  - name: tgett
+    category: contraction
+    python_api: flagtensor.tgett
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_TGETT.py
+    correctness_test: ctests/test_CUTENSOR_OP_TGETT.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_TGETT_perf.py
+    correctness_mark: tgett
+    benchmark_mark: tgett
+    benchmark_modes: [kernel, operator]
+    status: stable
+  - name: trinary_generic
+    category: contraction
+    python_api: flagtensor.trinary
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_TRINARY_GENERIC.py
+    correctness_test: ctests/test_CUTENSOR_OP_TRINARY_GENERIC.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_TRINARY_GENERIC_perf.py
+    correctness_mark: trinary_generic
+    benchmark_mark: trinary_generic
+    benchmark_modes: [operator]
+    status: stable
+  - name: ttgt
+    category: contraction
+    python_api: flagtensor.ttgt
+    impl_file: src/flagtensor/ops/CUTENSOR_OP_TTGT.py
+    correctness_test: ctests/test_CUTENSOR_OP_TTGT.py
+    benchmark_test: benchmark/test_CUTENSOR_OP_TTGT_perf.py
+    correctness_mark: ttgt
+    benchmark_mark: ttgt
+    benchmark_modes: [kernel, operator]
+    status: stable
