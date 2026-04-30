@@ -9,6 +9,31 @@ This repository provides two GitHub Actions workflows under `.github/workflows`:
 - `flagtensor-ci`: split into `correctness` and `perf` jobs for smoke-style automated validation.
 - `flagtensor-weekly`: runs the weekly correctness and benchmark pipeline from an operator list.
 
+## Operator registry
+
+The authoritative operator list lives in `conf/operators.yaml`.
+
+It is used to track:
+
+- operator category
+- implementation path
+- correctness / benchmark entry points
+- supported benchmark modes
+- blocked operators and skip reasons
+
+By default, the local CI and weekly runners discover operators from this registry.
+
+## Development quality gates
+
+Install and enable pre-commit locally:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+The repository ships a `.pre-commit-config.yaml` with YAML, formatting, import ordering, lint, and C/C++ formatting hooks.
+
 ### Benchmark modes
 
 Both workflows support the benchmark `mode` input:
