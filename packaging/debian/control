@@ -1,0 +1,21 @@
+Source: flagtensor
+Section: python
+Priority: optional
+Maintainer: FlagOS Contributors <contact@flagos.io>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-all,
+               python3-setuptools,
+               python3-wheel,
+               pybuild-plugin-pyproject
+Standards-Version: 4.6.2
+Homepage: https://github.com/flagos-ai/FlagTensor
+Vcs-Browser: https://github.com/flagos-ai/FlagTensor
+Vcs-Git: https://github.com/flagos-ai/FlagTensor.git
+Rules-Requires-Root: no
+
+Package: python3-flagtensor
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3-torch, python3-matplotlib, python3-openpyxl
+Description: FlagTensor — tensor utilities for FlagOS
+ Tensor manipulation utilities (reshape/permute/index helpers) used across the FlagOS operator libraries.
