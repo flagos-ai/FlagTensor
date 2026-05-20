@@ -16,6 +16,7 @@ Rules-Requires-Root: no
 
 Package: python3-flagtensor
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3-torch, python3-matplotlib, python3-openpyxl
+Depends: ${python3:Depends}, ${misc:Depends}, python3-matplotlib, python3-openpyxl
+Recommends: python3-torch
 Description: FlagTensor — tensor utilities for FlagOS
  Tensor manipulation utilities (reshape/permute/index helpers) used across the FlagOS operator libraries.
