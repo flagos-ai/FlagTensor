@@ -7,8 +7,7 @@ Summary:        FlagTensor — tensor utilities for FlagOS
 
 License:        Apache-2.0
 URL:            https://github.com/flagos-ai/FlagTensor
-Source0:        flagtensor-%{version}.tar.gz
-
+Source0:        %{url}/archive/v%{version}/flagtensor-%{version}.tar.gz
 BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools >= 60
