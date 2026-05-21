@@ -14,9 +14,9 @@ COPY . /workspace/FlagTensor
 
 RUN SPEC_VERSION=$(grep '^Version:' /workspace/FlagTensor/packaging/rpm/specs/flagtensor.spec | awk '{print $2}') && \
     tar czf /root/rpmbuild/SOURCES/flagtensor-${SPEC_VERSION}.tar.gz \
-        -C /workspace \
-        --transform "s|^FlagTensor|flagtensor-${SPEC_VERSION}|" \
-        FlagTensor
+        -C /workspace/FlagTensor \
+        --transform "s|^\\./|flagtensor-${SPEC_VERSION}/|" \
+        .
 
 RUN rpmbuild -ba /workspace/FlagTensor/packaging/rpm/specs/flagtensor.spec 2>&1 || \
     { echo "=== build failed ==="; \
