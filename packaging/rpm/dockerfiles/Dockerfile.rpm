@@ -15,6 +15,7 @@ COPY . /workspace/FlagTensor
 RUN SPEC_VERSION=$(grep '^Version:' /workspace/FlagTensor/packaging/rpm/specs/flagtensor.spec | awk '{print $2}') && \
     tar czf /root/rpmbuild/SOURCES/flagtensor-${SPEC_VERSION}.tar.gz \
         -C /workspace/FlagTensor \
+        --exclude='./.git' \
         --transform "s|^\\./|flagtensor-${SPEC_VERSION}/|" \
         .
 
