@@ -1,10 +1,9 @@
 %global debug_package %{nil}
 
-# Filter out auto-generated Requires for ML/non-distro runtime deps
-# (torch GPU build, triton, hydra-core...): the distro has no GPU-capable
-# python3-torch, no current triton, no hydra-core; users install matching
-# versions via pip per packaging/INSTALL.md. Match python3dist and
-# python3.X.Ydist forms (Fedora >= 39 uses the latter).
+# Filter the auto-generated Requires for: torch + triton.
+# Reason: distro torch is CPU-only; distro triton has no current version. Users install both via pip.
+# See packaging/INSTALL.md (or future flagos-packaging install docs) for the
+# user-side pip install incantation.
 %global __requires_exclude ^python3.*dist.*(torch|triton)
 
 Name:           python3-flagtensor
@@ -14,7 +13,7 @@ Summary:        FlagTensor — tensor utilities for FlagOS
 
 License:        Apache-2.0
 URL:            https://github.com/flagos-ai/FlagTensor
-Source0:        %{url}/archive/v%{version}/flagtensor-%{version}.tar.gz
+Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/flagtensor-%{version}.tar.gz
 BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools >= 60
