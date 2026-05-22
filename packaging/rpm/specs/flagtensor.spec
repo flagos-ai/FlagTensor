@@ -4,8 +4,7 @@
 # Reason: distro torch is CPU-only; distro triton has no current version. Users install both via pip.
 # See packaging/INSTALL.md (or future flagos-packaging install docs) for the
 # user-side pip install incantation.
-%global __requires_exclude ^python3.*dist.*(torch|triton)
-
+%global __requires_exclude ^python3(\.[0-9]+)?dist\((torch|triton)\)$
 Name:           python3-flagtensor
 Version:        0.1.0
 Release:        1%{?dist}
