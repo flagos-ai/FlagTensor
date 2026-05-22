@@ -44,7 +44,7 @@ PYTHONDONTWRITEBYTECODE=1 \
     python3 -c "import importlib.util; s = importlib.util.find_spec('flagtensor'); assert s and s.origin, 'flagtensor not findable'; print('OK: flagtensor at', s.origin)"
 
 %files -f %{pyproject_files}
-%license LICENSE*
+%license LICENSE
 
 %changelog
 * Wed May 13 2026 FlagOS Contributors <contact@flagos.io> - 0.1.0-1
