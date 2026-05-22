@@ -16,8 +16,9 @@ Rules-Requires-Root: no
 
 Package: python3-flagtensor
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3-matplotlib, python3-openpyxl
-# Note: python3-torch is pulled in automatically via ${python3:Depends}
-# (dh_python3 scans imports), so no explicit Recommends needed.
+Depends: python3:any, ${misc:Depends}, python3-matplotlib, python3-openpyxl
+# python3-torch and triton are intentionally NOT declared. distro torch is
+# CPU-only, triton has no current distro package. Install both via pip
+# (see packaging/INSTALL.md).
 Description: FlagTensor — tensor utilities for FlagOS
  Tensor manipulation utilities (reshape/permute/index helpers) used across the FlagOS operator libraries.
