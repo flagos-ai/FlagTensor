@@ -14,5 +14,4 @@ _asin_kernel, asin = make_unary_pointwise_from_family(
     "asin",
     "asin_like",
     _asin_scalar,
-    fallback_float64=torch.asin,
 )

@@ -76,7 +76,7 @@ This document describes the CI/CD workflows and their purposes in the FlagTensor
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `op_list` | `weekly_op_test.txt` | Path to operator list file |
+| `op_list` | (generated from registry) | Optional path to operator list file |
 | `gpus` | `0` | GPU IDs to use (comma-separated) |
 | `mode` | `kernel` | Benchmark mode (kernel/operator/wrapper) |
 

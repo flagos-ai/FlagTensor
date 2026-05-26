@@ -14,5 +14,4 @@ _swish_kernel, swish = make_unary_pointwise_from_family(
     "swish",
     "swish_like",
     _swish_scalar,
-    fallback_float64=lambda x: x * torch.sigmoid(x),
 )

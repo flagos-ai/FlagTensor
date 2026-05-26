@@ -47,6 +47,19 @@ class MulBenchmark(Benchmark):
     def reference_impl(self, x, y):
         return x * y
 
+    def build_triton_kernel_callable(self, x, y):
+        def run_kernel():
+            return mul(x, y)
+
+        return run_kernel
+
+    def build_baseline_kernel_callable(self, x, y):
+        baseline = self.baselines.get(x.dtype)
+        if baseline is None:
+            baseline = CuTensorMul(dtype=x.dtype)
+            self.baselines[x.dtype] = baseline
+        return baseline.build_kernel_callable(x, y)
+
 
 @pytest.mark.performance
 def test_mul_perf():

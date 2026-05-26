@@ -1,10 +1,13 @@
 import copy
+import logging
 import warnings
 
 import triton
 
 from . import backend
 from .backend.device import DeviceDetector
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigLoader(object):
@@ -34,7 +37,7 @@ class ConfigLoader(object):
                         backend.BackendArchEvent().heuristics_configs
                     )
             except Exception as err:
-                print(f"[INFO] : {err}")
+                logger.warning("Failed to load arch-specialized config: %s", err)
 
             if self.vendor_heuristics_config is None:
                 vendorname = self.device.vendor_name

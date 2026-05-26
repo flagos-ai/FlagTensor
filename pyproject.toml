@@ -71,7 +71,6 @@ markers = [
     "tanh: operator marker",
     "tensor_contraction_trinary: operator marker",
     "tgett: operator marker",
-    "trinary: operator marker",
     "trinary_generic: operator marker",
     "ttgt: operator marker",
 ]

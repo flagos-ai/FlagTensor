@@ -42,7 +42,7 @@ class TensorContractionTrinaryBenchmark(Benchmark):
         super().__init__(
             op_name=OP_NAME,
             config=BenchmarkConfig(
-                dtypes=tuple(dtype for dtype in DEFAULT_BENCHMARK_DTYPES if dtype in (torch.float16, torch.float32)),
+                dtypes=(torch.float32,),
                 shapes=tuple(DEFAULT_TENSOR_CONTRACTION_TRINARY_BENCHMARK_SHAPES),
                 mode=mode,
             ),

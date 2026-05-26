@@ -14,5 +14,4 @@ _acos_kernel, acos = make_unary_pointwise_from_family(
     "acos",
     "acos_like",
     _acos_scalar,
-    fallback_float64=torch.acos,
 )

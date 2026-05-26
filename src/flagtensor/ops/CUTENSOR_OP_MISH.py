@@ -18,5 +18,4 @@ _mish_kernel, mish = make_unary_pointwise_from_family(
     "mish",
     "mish_like",
     _mish_scalar,
-    fallback_float64=F.mish,
 )

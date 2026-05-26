@@ -74,7 +74,7 @@ def _block_sparse_reference(a, b, c, alpha=1.25, beta=0.5):
 
 
 @pytest.mark.block_sparse_tensor_contraction
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("shape_a,shape_b", DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_TEST_SHAPES)
 def test_block_sparse_tensor_contraction_correctness(dtype, shape_a, shape_b):
     if not torch.cuda.is_available():

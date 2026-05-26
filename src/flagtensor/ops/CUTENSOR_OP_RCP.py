@@ -14,5 +14,4 @@ _rcp_kernel, rcp = make_unary_pointwise_from_family(
     "rcp",
     "rcp_like",
     _rcp_scalar,
-    fallback_float64=torch.reciprocal,
 )

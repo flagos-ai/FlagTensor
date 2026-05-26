@@ -1,12 +1,14 @@
 name: flagtensor-weekly
 
 on:
+  schedule:
+    - cron: "0 2 * * 0"
   workflow_dispatch:
     inputs:
       op_list:
-        description: "Path to operator list file"
+        description: "Path to operator list file (optional, generated from registry if empty)"
         required: false
-        default: "weekly_op_test.txt"
+        default: ""
       gpus:
         description: "GPU ids passed to weekly runner"
         required: false
@@ -30,10 +32,7 @@ jobs:
           python -m pip install .
       - name: Prepare weekly operator list
         run: |
-          if [ -f "${{ github.event.inputs.op_list || 'weekly_op_test.txt' }}" ]; then
-            cp "${{ github.event.inputs.op_list || 'weekly_op_test.txt' }}" ci_weekly_ops.txt
-          else
-            python - <<'PY'
+          python - <<'PY'
 import sys
 sys.path.insert(0, 'src')
 from pathlib import Path
@@ -45,7 +44,6 @@ ops = [
 ]
 Path('ci_weekly_ops.txt').write_text('\n'.join(ops) + '\n', encoding='utf-8')
 PY
-          fi
       - name: Run weekly runner
         run: |
           python tools/run_flagtensor_weekly.py --project-root . --op-list ci_weekly_ops.txt --gpus "${{ github.event.inputs.gpus || '0' }}" --mode "${{ github.event.inputs.mode || 'kernel' }}" --results-dir weekly_results_ci

@@ -14,5 +14,4 @@ _acosh_kernel, acosh = make_unary_pointwise_from_family(
     "acosh",
     "acosh_like",
     _acosh_scalar,
-    fallback_float64=torch.acosh,
 )

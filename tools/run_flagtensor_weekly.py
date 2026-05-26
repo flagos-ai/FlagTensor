@@ -2,6 +2,7 @@
 import argparse
 import datetime
 import json
+import logging
 import os
 import re
 import subprocess
@@ -9,6 +10,13 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+logger = logging.getLogger("flagtensor.weekly")
+logging.basicConfig(
+    level=logging.INFO,
+    format="[flagtensor-weekly] %(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
@@ -284,7 +292,8 @@ def main():
         for future in as_completed(futures):
             future.result()
 
-    print(json.dumps({"results_dir": results_dir}, indent=2))
+    logger.info("weekly run complete results_dir=%s", results_dir)
+    sys.stdout.write(json.dumps({"results_dir": results_dir}, indent=2) + "\n")
 
 
 if __name__ == "__main__":

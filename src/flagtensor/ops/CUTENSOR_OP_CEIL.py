@@ -14,5 +14,4 @@ _ceil_kernel, ceil = make_unary_pointwise_from_family(
     "ceil",
     "ceil_like",
     _ceil_scalar,
-    fallback_float64=torch.ceil,
 )

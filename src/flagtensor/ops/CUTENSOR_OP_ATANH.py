@@ -14,5 +14,4 @@ _atanh_kernel, atanh = make_unary_pointwise_from_family(
     "atanh",
     "atanh_like",
     _atanh_scalar,
-    fallback_float64=torch.atanh,
 )

@@ -47,6 +47,19 @@ class MaxBenchmark(Benchmark):
     def reference_impl(self, x, y):
         return torch.maximum(x, y)
 
+    def build_triton_kernel_callable(self, x, y):
+        def run_kernel():
+            return max(x, y)
+
+        return run_kernel
+
+    def build_baseline_kernel_callable(self, x, y):
+        baseline = self.baselines.get(x.dtype)
+        if baseline is None:
+            baseline = CuTensorMax(dtype=x.dtype)
+            self.baselines[x.dtype] = baseline
+        return baseline.build_kernel_callable(x, y)
+
 
 @pytest.mark.performance
 def test_max_perf():

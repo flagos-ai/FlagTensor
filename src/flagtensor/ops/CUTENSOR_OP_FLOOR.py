@@ -14,5 +14,4 @@ _floor_kernel, floor = make_unary_pointwise_from_family(
     "floor",
     "floor_like",
     _floor_scalar,
-    fallback_float64=torch.floor,
 )

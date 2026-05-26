@@ -14,5 +14,4 @@ _sinh_kernel, sinh = make_unary_pointwise_from_family(
     "sinh",
     "sinh_like",
     _sinh_scalar,
-    fallback_float64=torch.sinh,
 )

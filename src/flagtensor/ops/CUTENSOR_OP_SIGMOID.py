@@ -14,5 +14,4 @@ _sigmoid_kernel, sigmoid = make_unary_pointwise_from_family(
     "sigmoid",
     "sigmoid_like",
     _sigmoid_scalar,
-    fallback_float64=torch.sigmoid,
 )

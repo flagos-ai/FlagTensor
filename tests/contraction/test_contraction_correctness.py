@@ -14,7 +14,7 @@ from flagtensor.testing import assert_close
 from tests._legacy_correctness_loader import populate_category_proxy
 
 
-CONTRACT_DTYPES = [dtype for dtype in DEFAULT_CORRECTNESS_DTYPES if dtype in (torch.float16, torch.float32, torch.float64)]
+CONTRACT_DTYPES = list(DEFAULT_CORRECTNESS_DTYPES)  # f16, f32, f64, bf16
 
 
 def _gett_case(shape_a, shape_b):

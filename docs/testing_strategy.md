@@ -16,11 +16,11 @@ FlagTensor follows pytest-based correctness testing and keeps its testing entry 
 - Tolerance should be centralized and dtype-aware.
 - Current project status:
   - correctness exists per operator in `ctests/`
-  - shared helpers are centralized in `src/flagtensor/testing.py`
+  - shared helpers are centralized in `src/flagtensor/testing/`
   - compatibility exports for the acceptance-style test tree are provided in `tests/accuracy_utils.py`
 - Acceptance target:
   - complete migration from per-file legacy imports toward the shared testing helper surface
-  - keep project-wide default tolerances for `float16`, `float32`, `float64`, `bfloat16`, and complex dtypes when applicable under a single authority
+  - keep project-wide default tolerances for `float16`, `float32`, and `bfloat16` under a single authority
 
 ## Shape coverage
 

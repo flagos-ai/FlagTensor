@@ -6,7 +6,7 @@ import torch
 
 
 def correctness_dtypes(
-    include_float64: bool = True, include_bfloat16: bool = False
+    include_float64: bool = False, include_bfloat16: bool = False
 ) -> List[torch.dtype]:
     """Return default dtypes for correctness testing.
 

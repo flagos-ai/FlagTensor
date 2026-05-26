@@ -3,6 +3,8 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.hypothesis/
+benchmark/chart*/
 benchmark/results_backup*/
 benchmark/results/
 ci_results/

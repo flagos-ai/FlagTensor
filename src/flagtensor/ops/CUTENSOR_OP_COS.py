@@ -14,5 +14,4 @@ _cos_kernel, cos = make_unary_pointwise_from_family(
     "cos",
     "cos_like",
     _cos_scalar,
-    fallback_float64=torch.cos,
 )

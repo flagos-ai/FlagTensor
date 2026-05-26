@@ -70,22 +70,20 @@ python tools/run_flagtensor_ci.py --smoke --run-perf --exclude-op tensor_contrac
 Run weekly locally in kernel mode:
 
 ```bash
-python tools/run_flagtensor_weekly.py --project-root . --op-list weekly_op_test.txt --gpus 0 --mode kernel --results-dir weekly_results_ci
+python tools/run_flagtensor_weekly.py --project-root . --gpus 0 --mode kernel --results-dir weekly_results_ci
 ```
 
 Run weekly locally in operator mode:
 
 ```bash
-python tools/run_flagtensor_weekly.py --project-root . --op-list weekly_op_test.txt --gpus 0 --mode operator --results-dir weekly_results_ci_operator
+python tools/run_flagtensor_weekly.py --project-root . --gpus 0 --mode operator --results-dir weekly_results_ci_operator
 ```
 
-### Current limitation
+Run weekly with an explicit operator list (optional; generated from registry if omitted):
 
-`tensor_contraction_trinary` is temporarily excluded from automated workflow runs because its `float64` correctness path is not yet stable in CI.
-
-可以通过 `python tools/run_flagtensor_ci.py --op-list tools/ci_op_list.txt` 执行 CI 基准测试。
-
-生成测试结果之后，通过
+```bash
+python tools/run_flagtensor_weekly.py --project-root . --op-list my_ops.txt --gpus 0 --mode kernel --results-dir weekly_results_ci
+```
 
 ```bash
 python tools/generate_flagtensor_html_report.py \

@@ -26,7 +26,7 @@ def _tensor_contraction_trinary_reference(a, b, c, d, reference):
     return 1.25 * reference(a, b, c) + 0.5 * d
 
 
-@pytest.mark.parametrize("dtype", [dtype for dtype in DEFAULT_CORRECTNESS_DTYPES if dtype in (torch.float16, torch.float32, torch.float64)])
+@pytest.mark.parametrize("dtype", [dtype for dtype in DEFAULT_CORRECTNESS_DTYPES if dtype in (torch.float16, torch.float32, torch.bfloat16)])
 @pytest.mark.parametrize("shape_a,shape_b,shape_c", DEFAULT_TENSOR_CONTRACTION_TRINARY_TEST_SHAPES)
 def test_tensor_contraction_trinary_correctness(dtype, shape_a, shape_b, shape_c):
     if not torch.cuda.is_available() or not CUTENSOR_AVAILABLE:

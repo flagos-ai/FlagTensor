@@ -44,7 +44,9 @@ This document defines the acceptance-facing benchmark policy for FlagTensor perf
 ## Shape and Dtype Policy
 
 - Benchmark shapes should be centrally managed where possible.
-- Category benchmark entry points should coexist with legacy single-operator benchmark files during migration.
+- Category-level benchmark entry points are the formal acceptance interface.
+  Legacy per-operator benchmark files are retained as debugging and migration compatibility shims,
+  not as an acceptance requirement.
 - Benchmark dtypes default to `float16` and `float32` unless the operator requires a specialized dtype set.
 
 ## Timing Policy
@@ -58,19 +60,23 @@ This document defines the acceptance-facing benchmark policy for FlagTensor perf
 - Benchmark CSV selection must be mode-aware.
 - Reports should distinguish `kernel`, `operator`, and `wrapper` outputs.
 - Acceptance reporting should include pass/fail status and speedup statistics.
-- HTML reporting is supported; XLSX output is still a future enhancement.
+- HTML and XLSX reporting are supported.
 
-## Category Benchmark Entry Points
+## Category Benchmark Entry Points (Acceptance Interface)
 
-Current acceptance-facing category entry points:
+Benchmark execution uses category-level files as the formal acceptance interface.
+Individual operators are selected via `pytest -m <op>` markers.
 
-- `benchmark/test_unary_perf.py`
-- `benchmark/test_binary_perf.py`
-- `benchmark/test_contraction_perf.py`
+Current category entry points (all four complete):
 
-Remaining migration target:
+- `benchmark/test_unary_perf.py` — 28 unary operators
+- `benchmark/test_binary_perf.py` — 4 binary operators
+- `benchmark/test_contraction_perf.py` — 5 contraction operators
+- `benchmark/test_sparse_perf.py` — 1 sparse operator
 
-- `benchmark/test_sparse_perf.py`
+Legacy per-operator benchmark files (`benchmark/test_CUTENSOR_OP_*_perf.py`) are retained as
+implementation details for debugging and migration compatibility, but they are not part of the
+formal acceptance interface.
 
 ## Source of Truth
 

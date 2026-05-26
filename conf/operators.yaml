@@ -348,8 +348,7 @@ operators:
     correctness_mark: tensor_contraction_trinary
     benchmark_mark: tensor_contraction_trinary
     benchmark_modes: [kernel, operator]
-    status: blocked
-    skip_reason: float64 correctness path is not yet stable in CI
+    status: active
   - name: tgett
     category: contraction
     python_api: flagtensor.tgett

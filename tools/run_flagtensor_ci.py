@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+import logging
 import os
 import re
 import shutil
@@ -12,9 +13,12 @@ import time
 from pathlib import Path
 
 
-def log(msg: str) -> None:
-    """Line-buffered progress line for CI debugging (child output may still be buffered)."""
-    print(f"[flagtensor-ci] {msg}", flush=True)
+logger = logging.getLogger("flagtensor.ci")
+logging.basicConfig(
+    level=logging.INFO,
+    format="[flagtensor-ci] %(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
@@ -39,7 +43,7 @@ def run_cmd(cmd, cwd=None, env=None, stream_to_terminal=False, label=""):
     With stream_to_terminal=True, each line is printed immediately while still collecting full output.
     """
     prefix = f"[{label}] " if label else ""
-    log(f"starting subprocess cwd={cwd!s} cmd={cmd!r}")
+    logger.info(f"starting subprocess cwd={cwd!s} cmd={cmd!r}")
     t0 = time.monotonic()
     process = subprocess.Popen(
         cmd,
@@ -56,13 +60,13 @@ def run_cmd(cmd, cwd=None, env=None, stream_to_terminal=False, label=""):
         if stream_to_terminal:
             for line in process.stdout:
                 chunks.append(line)
-                print(f"{prefix}{line}", end="", flush=True)
+                sys.stdout.write(f"{prefix}{line}")
         else:
             chunks.append(process.stdout.read() or "")
     process.wait()
     elapsed = time.monotonic() - t0
     out = "".join(chunks)
-    log(f"subprocess finished exit={process.returncode} elapsed_s={elapsed:.2f} bytes={len(out)}")
+    logger.info(f"subprocess finished exit={process.returncode} elapsed_s={elapsed:.2f} bytes={len(out)}")
     return process.returncode, out or ""
 
 
@@ -133,6 +137,30 @@ def benchmark_test_path(op: str) -> Path:
     return ROOT / "benchmark" / f"test_CUTENSOR_OP_{uppercase_op(op)}_perf.py"
 
 
+def benchmark_suite_path() -> Path:
+    return ROOT / "benchmark"
+
+
+def benchmark_suite_file_for_op(op: str, registry_map: dict) -> Path:
+    """Map operator to its category-level benchmark file.
+
+    Returns None if the operator or its category is not recognized.
+    """
+    _CATEGORY_FILE_MAP = {
+        "unary": "test_unary_perf.py",
+        "binary": "test_binary_perf.py",
+        "contraction": "test_contraction_perf.py",
+        "sparse": "test_sparse_perf.py",
+    }
+    spec = registry_map.get(op)
+    if spec is None:
+        return None
+    filename = _CATEGORY_FILE_MAP.get(spec.category)
+    if filename is None:
+        return None
+    return benchmark_suite_path() / filename
+
+
 def benchmark_csv_path(op: str, mode: str) -> Path:
     benchmark_dir = ROOT / "benchmark" / "results" / f"CUTENSOR_OP_{uppercase_op(op)}"
     mode_csv = benchmark_dir / f"benchmark_{mode}.csv"
@@ -187,25 +215,25 @@ def _ops_not_pass(block: dict) -> list:
 
 def log_run_summary(summary: dict) -> None:
     rd = summary["results_dir"]
-    log(f"done. artifacts: {rd}/summary.json, {rd}/summary.md")
+    logger.info(f"done. artifacts: {rd}/summary.json, {rd}/summary.md")
     if summary.get("correctness"):
-        log(f"correctness: {_status_histogram(summary['correctness'])}")
+        logger.info(f"correctness: {_status_histogram(summary['correctness'])}")
         bad = _ops_not_pass(summary["correctness"])
         if bad:
-            log(f"correctness not PASS ({len(bad)}): {', '.join(bad)}")
+            logger.info(f"correctness not PASS ({len(bad)}): {', '.join(bad)}")
     if summary.get("performance"):
-        log(f"perf: {_status_histogram(summary['performance'])}")
+        logger.info(f"perf: {_status_histogram(summary['performance'])}")
         bad = _ops_not_pass(summary["performance"])
         if bad:
-            log(f"perf not PASS ({len(bad)}): {', '.join(bad)}")
+            logger.info(f"perf not PASS ({len(bad)}): {', '.join(bad)}")
     if summary.get("libtuner_compare"):
         cold = {op: v["cold"] for op, v in summary["libtuner_compare"].items()}
         warm = {op: v["warm"] for op, v in summary["libtuner_compare"].items()}
-        log(f"libtuner cold: {_status_histogram(cold)} | warm: {_status_histogram(warm)}")
+        logger.info(f"libtuner cold: {_status_histogram(cold)} | warm: {_status_histogram(warm)}")
         bad_c = _ops_not_pass(cold)
         bad_w = _ops_not_pass(warm)
         if bad_c or bad_w:
-            log(f"libtuner not PASS — cold ({len(bad_c)}): {', '.join(bad_c)} | warm ({len(bad_w)}): {', '.join(bad_w)}")
+            logger.info(f"libtuner not PASS — cold ({len(bad_c)}): {', '.join(bad_c)} | warm ({len(bad_w)}): {', '.join(bad_w)}")
 
 
 def run_correctness(op: str, results_dir: Path, env, stream_subprocess: bool = False):
@@ -218,7 +246,7 @@ def run_correctness(op: str, results_dir: Path, env, stream_subprocess: bool = F
         target_path = test_path
         cmd = f"{sys.executable} -m pytest -vs {test_path.name}"
     else:
-        log(f"correctness skip {op}: missing {suite_path} and {test_path}")
+        logger.info(f"correctness skip {op}: missing {suite_path} and {test_path}")
         return {
             "status": "MISSING",
             "exit_code": 1,
@@ -242,22 +270,34 @@ def run_correctness(op: str, results_dir: Path, env, stream_subprocess: bool = F
     }
 
 
-def run_perf(op: str, results_dir: Path, env, suffix: str = "perf", stream_subprocess: bool = False):
-    test_path = benchmark_test_path(op)
-    if not test_path.exists():
-        log(f"perf skip {op} ({suffix}): missing {test_path}")
-        return {
-            "status": "MISSING",
-            "exit_code": 1,
-            "log_path": None,
-            "test_path": str(test_path),
-            "benchmark_csv": None,
-        }
+def run_perf(op: str, results_dir: Path, env, suffix: str = "perf", stream_subprocess: bool = False, registry_map: dict = None):
+    # Prefer category-level benchmark suite with -m <op> selection.
+    # Fall back to legacy per-op benchmark file for debugging.
+    suite_path = benchmark_suite_path()
+    suite_file = benchmark_suite_file_for_op(op, registry_map or {})
+    if suite_file is not None and suite_file.exists():
+        target_path = suite_path
+        test_path = suite_file
+        test_filename = suite_file.name
+        cmd = f'{sys.executable} -m pytest -vs {test_filename} -m "{op}"'
+    else:
+        test_path = benchmark_test_path(op)
+        if not test_path.exists():
+            logger.info(f"perf skip {op} ({suffix}): missing {suite_file or test_path}")
+            return {
+                "status": "MISSING",
+                "exit_code": 1,
+                "log_path": None,
+                "test_path": str(suite_file) if suite_file else str(test_path),
+                "benchmark_csv": None,
+            }
+        target_path = test_path.parent
+        test_filename = test_path.name
+        cmd = f"{sys.executable} -m pytest -vs {test_filename}"
     log_path = results_dir / op / f"{suffix}.log"
-    cmd = f"{sys.executable} -m pytest -vs {test_path.name}"
     code, output = run_cmd(
         cmd,
-        cwd=test_path.parent,
+        cwd=target_path,
         env=env,
         stream_to_terminal=stream_subprocess,
         label=f"perf:{op}:{suffix}",
@@ -285,7 +325,7 @@ def run_perf(op: str, results_dir: Path, env, suffix: str = "perf", stream_subpr
 
 
 def clear_libtuner_cache():
-    log("clear_libtuner_cache: importing flagtensor.utils.libcache")
+    logger.info("clear_libtuner_cache: importing flagtensor.utils.libcache")
     from flagtensor.utils import libcache
 
     db_path = Path(libcache.store.db_path)
@@ -305,15 +345,16 @@ def run_libtuner_compare(
     warmup=None,
     repetitions=None,
     stream_subprocess: bool = False,
+    registry_map: dict = None,
 ):
-    log(f"libtuner_compare {op}: clearing cache")
+    logger.info(f"libtuner_compare {op}: clearing cache")
     cache_path = clear_libtuner_cache()
     cold_env = smoke_env(base_env, smoke, mode=mode, dtypes=dtypes, max_shapes=max_shapes, warmup=warmup, repetitions=repetitions)
     warm_env = smoke_env(base_env, smoke, mode=mode, dtypes=dtypes, max_shapes=max_shapes, warmup=warmup, repetitions=repetitions)
-    log(f"libtuner_compare {op}: cold run")
-    cold = run_perf(op, results_dir, cold_env, suffix="perf_cold", stream_subprocess=stream_subprocess)
-    log(f"libtuner_compare {op}: warm run")
-    warm = run_perf(op, results_dir, warm_env, suffix="perf_warm", stream_subprocess=stream_subprocess)
+    logger.info(f"libtuner_compare {op}: cold run")
+    cold = run_perf(op, results_dir, cold_env, suffix="perf_cold", stream_subprocess=stream_subprocess, registry_map=registry_map)
+    logger.info(f"libtuner_compare {op}: warm run")
+    warm = run_perf(op, results_dir, warm_env, suffix="perf_warm", stream_subprocess=stream_subprocess, registry_map=registry_map)
     return {
         "cache_db": cache_path,
         "cold": cold,
@@ -323,7 +364,8 @@ def run_libtuner_compare(
 
 def smoke_env(base_env, smoke: bool, mode: str = "kernel", dtypes=None, max_shapes=None, warmup=None, repetitions=None):
     env = dict(base_env)
-    env["FLAGTENSOR_BENCHMARK_MODE"] = mode
+    if mode is not None:
+        env["FLAGTENSOR_BENCHMARK_MODE"] = mode
     if smoke:
         env.setdefault("FLAGTENSOR_BENCHMARK_WARMUP", "2")
         env.setdefault("FLAGTENSOR_BENCHMARK_REPETITIONS", "5")
@@ -353,7 +395,7 @@ def main():
     parser.add_argument("--run-perf", action="store_true")
     parser.add_argument("--run-libtuner-compare", action="store_true")
     parser.add_argument("--smoke", action="store_true")
-    parser.add_argument("--mode", choices=["kernel", "operator", "wrapper"], default="kernel")
+    parser.add_argument("--mode", choices=["kernel", "operator", "wrapper"], default=None)
     parser.add_argument("--dtypes", default=None)
     parser.add_argument("--max-shapes", type=int, default=None)
     parser.add_argument("--warmup", type=int, default=None)
@@ -385,23 +427,23 @@ def main():
     results_dir = Path(args.results_dir).resolve() if args.results_dir else ROOT / "ci_results"
     ensure_dir(results_dir)
 
-    log(f"root={ROOT}")
-    log(f"results_dir={results_dir}")
-    log(f"ops count={len(ops)}: {ops[:5]}{' ...' if len(ops) > 5 else ''}")
-    log(f"flags: run_correctness={args.run_correctness} run_perf={args.run_perf} run_libtuner_compare={args.run_libtuner_compare} smoke={args.smoke} verbose={args.verbose}")
+    logger.info(f"root={ROOT}")
+    logger.info(f"results_dir={results_dir}")
+    logger.info(f"ops count={len(ops)}: {ops[:5]}{' ...' if len(ops) > 5 else ''}")
+    logger.info(f"flags: run_correctness={args.run_correctness} run_perf={args.run_perf} run_libtuner_compare={args.run_libtuner_compare} smoke={args.smoke} verbose={args.verbose}")
 
     base_env = os.environ.copy()
     if args.cuda_visible_devices is not None:
         base_env["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
-        log(f"CUDA_VISIBLE_DEVICES={args.cuda_visible_devices!r}")
+        logger.info(f"CUDA_VISIBLE_DEVICES={args.cuda_visible_devices!r}")
 
-    log("writing env.json")
+    logger.info("writing env.json")
     export_environment(results_dir)
 
     if not any([args.run_correctness, args.run_perf, args.run_libtuner_compare]):
         args.run_correctness = True
         args.run_perf = True
-        log("no run_* flags set; defaulting to correctness + perf")
+        logger.info("no run_* flags set; defaulting to correctness + perf")
 
     stream = args.verbose
     summary = {
@@ -415,7 +457,7 @@ def main():
     perf_env = smoke_env(
         base_env,
         args.smoke,
-        mode=args.mode,
+        mode=args.mode or "kernel",
         dtypes=args.dtypes,
         max_shapes=args.max_shapes,
         warmup=args.warmup,
@@ -423,44 +465,45 @@ def main():
     )
 
     for i, op in enumerate(ops, start=1):
-        log(f"--- operator {i}/{len(ops)}: {op!r} ---")
+        logger.info(f"--- operator {i}/{len(ops)}: {op!r} ---")
         ensure_dir(results_dir / op)
         spec = registry_map.get(op)
         if spec and spec.is_blocked:
-            log(f"{op}: blocked in registry ({spec.skip_reason or 'no reason provided'})")
+            logger.info(f"{op}: blocked in registry ({spec.skip_reason or 'no reason provided'})")
         if args.run_correctness:
-            log(f"{op}: correctness starting")
+            logger.info(f"{op}: correctness starting")
             summary["correctness"][op] = run_correctness(op, results_dir, base_env, stream_subprocess=stream)
             st = summary["correctness"][op].get("status")
-            log(f"{op}: correctness done status={st}")
+            logger.info(f"{op}: correctness done status={st}")
         if args.run_perf:
-            log(f"{op}: perf starting")
-            summary["performance"][op] = run_perf(op, results_dir, perf_env, stream_subprocess=stream)
+            logger.info(f"{op}: perf starting")
+            summary["performance"][op] = run_perf(op, results_dir, perf_env, stream_subprocess=stream, registry_map=registry_map)
             st = summary["performance"][op].get("status")
-            log(f"{op}: perf done status={st}")
+            logger.info(f"{op}: perf done status={st}")
         if args.run_libtuner_compare:
             summary["libtuner_compare"][op] = run_libtuner_compare(
                 op,
                 results_dir,
                 base_env,
                 smoke=args.smoke,
-                mode=args.mode,
+                mode=args.mode or "kernel",
                 dtypes=args.dtypes,
                 max_shapes=args.max_shapes,
                 warmup=args.warmup,
                 repetitions=args.repetitions,
                 stream_subprocess=stream,
+                registry_map=registry_map,
             )
             c = summary["libtuner_compare"][op]["cold"].get("status")
             w = summary["libtuner_compare"][op]["warm"].get("status")
-            log(f"{op}: libtuner_compare done cold={c} warm={w}")
+            logger.info(f"{op}: libtuner_compare done cold={c} warm={w}")
 
     summary_path = results_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     write_markdown_summary(summary, results_dir)
     log_run_summary(summary)
     if args.dump_json_summary:
-        print(json.dumps(summary, indent=2))
+        sys.stdout.write(json.dumps(summary, indent=2) + "\n")
 
 
 if __name__ == "__main__":

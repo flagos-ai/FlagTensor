@@ -14,7 +14,7 @@ This document defines the acceptance-facing accuracy policy for FlagTensor corre
 
 - Bit-exact operators should use equality-style assertions.
 - Floating-point operators should use close-style assertions.
-- All default close-style assertions should use centralized helper APIs from `src/flagtensor/testing.py`.
+- All default close-style assertions should use centralized helper APIs from `src/flagtensor/testing/`.
 - Acceptance-style tests may re-export these helpers through `tests/accuracy_utils.py`.
 
 ## Default Tolerances
@@ -24,9 +24,8 @@ This document defines the acceptance-facing accuracy policy for FlagTensor corre
 | `float16` | `1e-3` | `1e-3` |
 | `bfloat16` | `2e-2` | `2e-2` |
 | `float32` | `1e-5` | `1e-5` |
-| `float64` | `1e-7` | `1e-7` |
-| `complex64` | `1e-5` | `1e-5` |
-| `complex128` | `1e-7` | `1e-7` |
+
+Complex tolerances are not defined: Triton does not natively support complex dtypes. The only operator with complex support is `conj`, which handles complex via a dedicated kernel that decomposes real/imag parts at the Python level before launching Triton.
 
 ## Shape Policy
 
@@ -37,9 +36,9 @@ This document defines the acceptance-facing accuracy policy for FlagTensor corre
 
 ## Dtype Coverage Policy
 
-- Default correctness coverage includes `float16`, `float32`, and `float64` where operator support is stable.
-- `bfloat16` is opt-in and should be enabled only where kernels and references are reliable.
-- Complex dtype coverage is limited to operators that explicitly support complex semantics.
+- Default correctness coverage includes `float16`, `float32`, and `bfloat16` where operator support is stable.
+- Complex dtype (`complex64`, `complex128`) is **only supported for `conj`**. Triton's type system does not support complex natively, so all other unary operators reject complex inputs at the executor level.
+- Benchmark coverage includes `float16` and `float32` for all operator categories.
 
 ## Skip / Block Policy
 
@@ -50,6 +49,6 @@ This document defines the acceptance-facing accuracy policy for FlagTensor corre
 ## Source of Truth
 
 - Registry metadata: `conf/operators.yaml`
-- Shared helpers: `src/flagtensor/testing.py`
+- Shared helpers: `src/flagtensor/testing/`
 - Compatibility exports: `tests/accuracy_utils.py`
 - Strategy overview: `docs/testing_strategy.md`

@@ -53,7 +53,9 @@ python tools/run_flagtensor_ci.py --category unary --run-correctness --results-d
 python tools/run_flagtensor_ci.py --run-correctness --mode operator --results-dir acceptance_results_correctness --dump-json-summary
 ```
 
-### Correctness via Pytest (Direct)
+### Correctness via Pytest — Category Files (Primary)
+
+Category-level correctness files are the formal acceptance interface:
 
 ```bash
 # Run all correctness tests via tests/ entry
@@ -62,7 +64,15 @@ python -m pytest -vs tests
 # Run specific operator correctness via marker
 python -m pytest -vs tests -m acos
 
-# Run correctness via legacy ctests/ (fallback)
+# Run all operators in a category
+python -m pytest -vs tests/unary/
+```
+
+### Correctness via Pytest — Legacy/Debug
+
+Legacy per-operator files in `ctests/` are retained for debugging but are not part of the acceptance interface:
+
+```bash
 python -m pytest -vs ctests/test_CUTENSOR_OP_ACOS.py
 ```
 
@@ -91,7 +101,9 @@ python tools/run_flagtensor_ci.py --run-perf --results-dir acceptance_results_pe
 python tools/run_flagtensor_ci.py --run-perf --mode operator --results-dir acceptance_results_perf --dump-json-summary
 ```
 
-### Performance via Category Benchmarks
+### Performance via Category Benchmarks (Primary)
+
+Category-level benchmark files are the formal acceptance interface. Individual operators are selected via `pytest -m <op>` markers:
 
 ```bash
 # Run unary category benchmark
@@ -102,12 +114,16 @@ python -m pytest -vs benchmark/test_binary_perf.py -m add
 
 # Run contraction category benchmark
 python -m pytest -vs benchmark/test_contraction_perf.py -m gett
+
+# Run sparse category benchmark
+python -m pytest -vs benchmark/test_sparse_perf.py -m block_sparse_tensor_contraction
 ```
 
-### Performance via Single Operator (Legacy)
+### Performance via Single Operator — Legacy/Debug
+
+Legacy per-operator benchmark files are retained for debugging but are not part of the acceptance interface:
 
 ```bash
-# Run specific operator benchmark
 python -m pytest -vs benchmark/test_CUTENSOR_OP_ACOS_perf.py
 ```
 
@@ -117,8 +133,8 @@ python -m pytest -vs benchmark/test_CUTENSOR_OP_ACOS_perf.py
 # Run weekly regression with registry-driven operator selection
 python tools/run_flagtensor_weekly.py --project-root . --results-dir weekly_results --gpus 0 --mode kernel
 
-# Run weekly with specific operator list
-python tools/run_flagtensor_weekly.py --project-root . --op-list weekly_op_test.txt --results-dir weekly_results --gpus 0 --mode kernel
+# Run weekly with specific operator list (optional; generated from registry if omitted)
+python tools/run_flagtensor_weekly.py --project-root . --op-list my_ops.txt --results-dir weekly_results --gpus 0 --mode kernel
 
 # Run weekly with category filter
 python tools/run_flagtensor_weekly.py --project-root . --category unary --results-dir weekly_results --gpus 0 --mode kernel
@@ -230,4 +246,5 @@ To verify acceptance readiness, run the following commands in order:
    python -m pytest -vs benchmark/test_unary_perf.py -m identity
    python -m pytest -vs benchmark/test_binary_perf.py -m add
    python -m pytest -vs benchmark/test_contraction_perf.py -m gett
+   python -m pytest -vs benchmark/test_sparse_perf.py -m block_sparse_tensor_contraction
    ```

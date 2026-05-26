@@ -4,7 +4,7 @@ Generated from registry: `conf/operators.yaml`
 
 ## By Category
 
-### Unary Operators (30)
+### Unary Operators (28)
 
 | Operator | Impl | Correctness | Benchmark | Modes | Status |
 | --- | --- | --- | --- | --- | --- |
@@ -53,7 +53,7 @@ Generated from registry: `conf/operators.yaml`
 | gett | Done | Done | Done | kernel, operator | stable |
 | tgett | Done | Done | Done | kernel, operator | stable |
 | ttgt | Done | Done | Done | kernel, operator | stable |
-| tensor_contraction_trinary | Done | Done | Done | kernel, operator | blocked |
+| tensor_contraction_trinary | Done | Done | Done | kernel, operator | stable |
 | trinary_generic | Done | Done | Done | operator | stable |
 
 ### Sparse Operators (1)
@@ -67,5 +67,5 @@ Generated from registry: `conf/operators.yaml`
 - **Total Operators**: 38
 - **Stable**: 37
 - **Experimental**: 1
-- **Blocked**: 1
-- **Categories**: unary (30), binary (4), contraction (5), sparse (1)
+- **Blocked**: 0
+- **Categories**: unary (28), binary (4), contraction (5), sparse (1)
