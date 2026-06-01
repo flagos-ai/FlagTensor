@@ -32,7 +32,7 @@ line_length = 120
 
 [tool.pytest.ini_options]
 addopts = "-ra"
-testpaths = ["tests", "benchmark", "weekly_tests", "weekly_benchmark"]
+testpaths = ["tests", "benchmark"]
 markers = [
     "abs: operator marker",
     "acos: operator marker",
