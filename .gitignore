@@ -19,3 +19,4 @@ src/flagtensor.egg-info/
 weekly_op_test.txt
 *.html
 !docs/**/*.html
+tools/speedup_analysis*/

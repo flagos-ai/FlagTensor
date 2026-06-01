@@ -105,9 +105,8 @@ def parse_perf_rows(text):
 def run_accuracy(op, gpu_id, project_root, op_dir):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    weekly_tests_dir = os.path.join(project_root, "weekly_tests")
-    cmd = f'{sys.executable} -m pytest -m "{op}" --ref cpu -vs'
-    out, err, code = run_cmd_capture(cmd, cwd=weekly_tests_dir, env=env)
+    cmd = f'{sys.executable} -m pytest tests -m "{op}" -vs'
+    out, err, code = run_cmd_capture(cmd, cwd=project_root, env=env)
     combined = out + "\n" + err
     log_path = os.path.join(op_dir, "accuracy.log")
     with open(log_path, "w", encoding="utf-8") as f:
@@ -133,9 +132,8 @@ def run_benchmark(op, gpu_id, project_root, op_dir):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     env.setdefault("FLAGTENSOR_BENCHMARK_MODE", "kernel")
-    weekly_benchmark_dir = os.path.join(project_root, "weekly_benchmark")
-    cmd = f'{sys.executable} -m pytest -m "{op}" --level core --record log -vs'
-    out, err, code = run_cmd_capture(cmd, cwd=weekly_benchmark_dir, env=env)
+    cmd = f'{sys.executable} -m pytest benchmark -m "{op}" -vs'
+    out, err, code = run_cmd_capture(cmd, cwd=project_root, env=env)
     combined = out + "\n" + err
     log_path = os.path.join(op_dir, "perf.log")
     with open(log_path, "w", encoding="utf-8") as f:
