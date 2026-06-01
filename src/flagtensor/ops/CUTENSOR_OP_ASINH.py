@@ -16,5 +16,4 @@ _asinh_kernel, asinh = make_unary_pointwise_from_family(
     "asinh",
     "asinh_like",
     _asinh_scalar,
-    fallback_float64=torch.asinh,
 )

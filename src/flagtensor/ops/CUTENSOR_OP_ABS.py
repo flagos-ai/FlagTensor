@@ -14,5 +14,4 @@ _abs_kernel, abs = make_unary_pointwise_from_family(
     "abs",
     "abs_like",
     _abs_scalar,
-    fallback_float64=torch.abs,
 )

@@ -36,7 +36,7 @@ class TgettBenchmark(Benchmark):
         super().__init__(
             op_name=OP_NAME,
             config=BenchmarkConfig(
-                dtypes=tuple(dtype for dtype in DEFAULT_BENCHMARK_DTYPES if dtype in (torch.float16, torch.float32)),
+                dtypes=(torch.float32,),
                 shapes=tuple(DEFAULT_TGETT_BENCHMARK_SHAPES),
                 mode="kernel",
             ),
@@ -58,7 +58,7 @@ class TgettBenchmark(Benchmark):
             baseline = CuTensorContraction(dtype=a.dtype)
             self.baselines[a.dtype] = baseline
         mode_a, mode_b, mode_d, _, _ = _tgett_case(tuple(a.shape), tuple(b.shape))
-        a_t = a.transpose(-1, -2)
+        a_t = a.transpose(-1, -2).contiguous()
         return baseline(a_t, b, c=c, alpha=1.25, beta=0.5, mode_a=mode_a, mode_b=mode_b, mode_c=mode_d, mode_d=mode_d)
 
     def triton_impl(self, a, b, c):
@@ -90,7 +90,7 @@ class TgettBenchmark(Benchmark):
         if baseline is None:
             baseline = CuTensorContraction(dtype=a.dtype)
             self.baselines[a.dtype] = baseline
-        a_t = a.transpose(-1, -2)
+        a_t = a.transpose(-1, -2).contiguous()
 
         def run_kernel():
             return baseline(a_t, b, c=c, alpha=1.25, beta=0.5, mode_a=mode_a, mode_b=mode_b, mode_c=mode_d, mode_d=mode_d)

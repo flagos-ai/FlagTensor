@@ -15,5 +15,4 @@ _tanh_kernel, tanh = make_unary_pointwise_from_family(
     "tanh",
     "tanh_like",
     _tanh_scalar,
-    fallback_float64=torch.tanh,
 )

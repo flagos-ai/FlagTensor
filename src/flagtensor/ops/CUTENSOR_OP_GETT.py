@@ -2,8 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flagtensor.cutensor import gett as cutensor_gett
-
+from flagtensor.cutensor import _normalize_modes
 
 _GETT_PREPARED_LAUNCHER_CACHE = {}
 
@@ -124,7 +123,7 @@ def _is_default_2d_gett_case(a, b, c, mode_a, mode_b, mode_c, mode_d):
 def _supports_triton_gett(a, b, c, mode_a, mode_b, mode_c, mode_d):
     if not a.is_cuda or not b.is_cuda:
         return False
-    if a.dtype != b.dtype or a.dtype not in (torch.float16, torch.float32):
+    if a.dtype != b.dtype or a.dtype not in (torch.float16, torch.float32, torch.bfloat16):
         return False
     if c is not None and (not c.is_cuda or c.dtype != a.dtype):
         return False
@@ -231,21 +230,264 @@ def _validate_triton_gett_inputs(a, b, c, out):
             raise ValueError(f"output tensor shape mismatch: expected {(a.shape[0], b.shape[1])}, got {tuple(out.shape)}")
 
 
+# ── General contraction path (replaces cuTensor fallback) ────────────────────
+
+def _contract_via_triton_gett(a, b, c, mode_a, mode_b, mode_c, mode_d, alpha, beta, out):
+    """
+    General tensor contraction implemented via our Triton GEMM kernel.
+
+    Strategy:
+      - 2D mode permutations → detect trans_a/trans_b flags, use kernel directly
+      - ND contraction → permute + reshape to 2D → Triton GEMM → reshape back
+      - bfloat16 → upcast to float32 → GEMM → cast back
+      - Complex dtypes → NotImplementedError
+    """
+    if a.dtype.is_complex or b.dtype.is_complex:
+        raise NotImplementedError(
+            f"GETT: complex dtypes ({a.dtype}) are not yet supported"
+        )
+
+    cast_back = None
+    if a.dtype not in (torch.float16, torch.float32, torch.bfloat16):
+        cast_back = a.dtype
+        a = a.to(torch.float32)
+        b = b.to(torch.float32)
+        if c is not None:
+            c = c.to(torch.float32)
+
+    # Resolve default modes
+    if mode_a is None:
+        mode_a = tuple(range(a.ndim))
+    mode_a = _normalize_modes(mode_a, a.ndim)
+    if mode_b is None:
+        mode_b = tuple(range(mode_a[-1], mode_a[-1] + b.ndim))
+    mode_b = _normalize_modes(mode_b, b.ndim)
+
+    # Find shared modes between A and B.
+    # Shared modes that also appear in mode_d are batch dimensions (preserved).
+    # Shared modes absent from mode_d are contracted (summed over).
+    shared_modes = [m for m in mode_a if m in mode_b]
+
+    if mode_d is not None:
+        mode_d_set = set(mode_d)
+        contracted = [m for m in shared_modes if m not in mode_d_set]
+        if not contracted:
+            raise ValueError("no contracted modes between A and B (all shared modes appear in output)")
+    else:
+        contracted = list(shared_modes)
+    free_a = [m for m in mode_a if m not in contracted]
+    free_b = [m for m in mode_b if m not in contracted]
+
+    if mode_d is None:
+        mode_d = tuple(free_a + [m for m in free_b if m not in free_a])
+    else:
+        expected_output_modes = set(free_a + free_b)
+        if set(mode_d) != expected_output_modes or len(mode_d) != len(expected_output_modes):
+            raise ValueError(
+                f"mode_d {mode_d} inconsistent with free modes "
+                f"free_a={free_a} free_b={free_b}"
+            )
+
+    if mode_c is None:
+        mode_c = mode_d
+    elif c is not None:
+        mode_c = _normalize_modes(mode_c, c.ndim)
+
+    # Build mode → size map
+    mode_sizes = {}
+    for i, m in enumerate(mode_a):
+        mode_sizes[m] = a.shape[i]
+    for i, m in enumerate(mode_b):
+        if m in mode_sizes and mode_sizes[m] != b.shape[i]:
+            raise ValueError(
+                f"contraction mode {m} has inconsistent sizes: "
+                f"{mode_sizes[m]} in A vs {b.shape[i]} in B"
+            )
+        mode_sizes[m] = b.shape[i]
+
+    output_shape = tuple(mode_sizes[m] for m in mode_d)
+    K = 1
+    for m in contracted:
+        K *= mode_sizes[m]
+
+    if a.ndim == 2 and b.ndim == 2 and len(contracted) == 1:
+        # ── 2D path with mode detection ──────────────────────────────────
+        trans_a = mode_a[0] in contracted
+        trans_b = mode_b[1] in contracted
+
+        a = a.contiguous()
+        b = b.contiguous()
+
+        if c is not None:
+            if mode_c != mode_d:
+                raise NotImplementedError(
+                    "GETT: C tensor mode remapping is not yet supported"
+                )
+            c = c.contiguous()
+
+        if out is None:
+            out = torch.empty(output_shape, device=a.device, dtype=a.dtype)
+
+        result = _launch_gett_like_kernel(a, b, c, out, alpha, beta,
+                                          trans_a=trans_a, trans_b=trans_b)
+        if cast_back is not None:
+            result = result.to(cast_back)
+        return result
+
+    # ── ND path: permute + reshape to 2D ─────────────────────────────
+    a_cont_dims = [mode_a.index(m) for m in contracted]
+    a_free_dims = [mode_a.index(m) for m in free_a]
+    b_cont_dims = [mode_b.index(m) for m in contracted]
+    b_free_dims = [mode_b.index(m) for m in free_b]
+
+    # Detect batch modes: free modes present in both A and B
+    batch_modes = [m for m in free_a if m in free_b]
+    free_a_unique = [m for m in free_a if m not in batch_modes]
+    free_b_unique = [m for m in free_b if m not in batch_modes]
+
+    if batch_modes and not (free_a_unique or free_b_unique):
+        # Pure batch-mode contraction (all free modes are shared).
+        # A and B have no free non-batch modes → output is just the batch shape.
+        # Example: A=(B,K), B=(B,K) with mode_d=(B) → contraction along K only.
+        # This requires a dot-product-like operation, which our GEMM does not
+        # handle via the simple ND reshape path. Fall through to error.
+
+        # Compute batch product for the 2D reshape
+        a_batch_dims = [mode_a.index(m) for m in batch_modes]
+        a_perm = a.permute(*a_batch_dims, *a_cont_dims).contiguous()
+        batch_size = 1
+        for i in range(len(batch_modes)):
+            batch_size *= a_perm.shape[i]
+        M = batch_size
+        a_2d = a_perm.reshape(M, K)
+        N = 1  # No unique free modes in B
+
+        b_batch_dims = [mode_b.index(m) for m in batch_modes]
+        b_perm = b.permute(*b_batch_dims, *b_cont_dims).contiguous()
+        b_2d = b_perm.reshape(batch_size, K)
+    else:
+        if batch_modes:
+            # Batched contraction: unroll batch dimension as a loop over 2D GEMMs
+            batch_sizes = [mode_sizes[m] for m in batch_modes]
+            total_batch = 1
+            for s in batch_sizes:
+                total_batch *= s
+            batch_shape = tuple(batch_sizes)
+
+            # A: permute to (batch_modes, free_a_unique, contracted)
+            a_batch_dims = [mode_a.index(m) for m in batch_modes]
+            a_free_u_dims = [mode_a.index(m) for m in free_a_unique]
+            a_perm = a.permute(*(a_batch_dims + a_free_u_dims + a_cont_dims)).contiguous()
+            M = 1
+            for i in range(len(free_a_unique)):
+                M *= a_perm.shape[len(batch_modes) + i]
+            a_view = a_perm.reshape(total_batch, M, K)
+
+            # B: permute to (batch_modes, contracted, free_b_unique)
+            b_batch_dims = [mode_b.index(m) for m in batch_modes]
+            b_free_u_dims = [mode_b.index(m) for m in free_b_unique]
+            b_perm = b.permute(*(b_batch_dims + b_cont_dims + b_free_u_dims)).contiguous()
+            N = 1
+            for i in range(len(free_b_unique)):
+                N *= b_perm.shape[len(batch_modes) + len(contracted) + i]
+            b_view = b_perm.reshape(total_batch, K, N)
+
+            # C: permute to (batch_modes, free_a_unique, free_b_unique) = mode_d order
+            if c is not None:
+                if mode_c != mode_d:
+                    raise NotImplementedError(
+                        "GETT: C tensor mode remapping is not yet supported"
+                    )
+                c_dims = [mode_c.index(m) for m in batch_modes + free_a_unique + free_b_unique]
+                c_perm = c.permute(*c_dims).contiguous()
+                c_view = c_perm.reshape(total_batch, M, N)
+            else:
+                c_view = None
+
+            # Allocate output in batch-aware layout and loop
+            out_perm_shape = batch_shape + (M, N)
+            result_perm = torch.empty(out_perm_shape, device=a.device, dtype=a.dtype)
+            for b in range(total_batch):
+                c_slice = c_view[b] if c_view is not None else None
+                _launch_gett_like_kernel(a_view[b], b_view[b], c_slice,
+                                         result_perm[b], alpha, beta,
+                                         trans_a=False, trans_b=False)
+
+            # Reshape result to output shape (mode_d order)
+            result = result_perm.reshape(output_shape)
+            if cast_back is not None:
+                result = result.to(cast_back)
+            if out is not None:
+                out.copy_(result)
+                return out
+            return result
+        else:
+            # No batch modes: simple permute + reshape to 2D
+            a_perm = a.permute(*a_free_dims, *a_cont_dims).contiguous()
+            M = 1
+            for i in range(len(free_a)):
+                M *= a_perm.shape[i]
+            a_2d = a_perm.reshape(M, K)
+
+            b_perm = b.permute(*b_cont_dims, *b_free_dims).contiguous()
+            N = 1
+            for i in range(len(free_b)):
+                N *= b_perm.shape[len(contracted) + i]
+            b_2d = b_perm.reshape(K, N)
+
+            if c is not None:
+                if mode_c != mode_d:
+                    raise NotImplementedError(
+                        "GETT: C tensor mode remapping is not yet supported"
+                    )
+                c_2d = c.contiguous().reshape(M, N)
+            else:
+                c_2d = None
+
+            out_2d = torch.empty(M, N, device=a.device, dtype=a.dtype)
+            result_2d = _launch_gett_like_kernel(a_2d, b_2d, c_2d, out_2d,
+                                                 alpha, beta, trans_a=False, trans_b=False)
+
+    result = result_2d.reshape(output_shape)
+    if cast_back is not None:
+        result = result.to(cast_back)
+
+    if out is not None:
+        out.copy_(result)
+        return out
+    return result
+
+
+# ── Public API ───────────────────────────────────────────────────────────────
+
 def gett(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
+    """General tensor contraction: ``alpha * A @ B + beta * C``.
+
+    Fast path: 2D contiguous float16/float32 with default modes uses a
+    specialised autotuned Triton GEMM kernel.
+
+    General path: arbitrary ND tensors, mode permutations, and non-standard
+    dtypes are handled by reshaping to 2D and dispatching through the same
+    Triton GEMM kernel.
+    """
+    if not a.is_cuda or not b.is_cuda:
+        raise ValueError("input tensors must be on CUDA")
+    if a.dtype != b.dtype:
+        raise TypeError("input tensors must have the same dtype")
+    if c is not None and not c.is_cuda:
+        raise ValueError("addend tensor must be on CUDA")
+    if c is not None and c.dtype != a.dtype:
+        raise TypeError("addend tensor must have the same dtype as inputs")
+    if out is not None and not out.is_cuda:
+        raise ValueError("output tensor must be on CUDA")
+    if out is not None and out.dtype != a.dtype:
+        raise TypeError("output tensor must have the same dtype as inputs")
+
+    # Fast path: default 2D case with supported dtypes
     if _supports_triton_gett(a, b, c, mode_a, mode_b, mode_c, mode_d):
         _validate_triton_gett_inputs(a, b, c, out)
         if out is None:
             out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=a.dtype)
         return _launch_gett_kernel(a, b, c, out, alpha, beta)
-    return cutensor_gett(
-        a,
-        b,
-        c=c,
-        alpha=alpha,
-        beta=beta,
-        mode_a=mode_a,
-        mode_b=mode_b,
-        mode_c=mode_c,
-        mode_d=mode_d,
-        out=out,
-    )
+
+    return _contract_via_triton_gett(a, b, c, mode_a, mode_b, mode_c, mode_d, alpha, beta, out)

@@ -9,6 +9,31 @@ This repository provides two GitHub Actions workflows under `.github/workflows`:
 - `flagtensor-ci`: split into `correctness` and `perf` jobs for smoke-style automated validation.
 - `flagtensor-weekly`: runs the weekly correctness and benchmark pipeline from an operator list.
 
+## Operator registry
+
+The authoritative operator list lives in `conf/operators.yaml`.
+
+It is used to track:
+
+- operator category
+- implementation path
+- correctness / benchmark entry points
+- supported benchmark modes
+- blocked operators and skip reasons
+
+By default, the local CI and weekly runners discover operators from this registry.
+
+## Development quality gates
+
+Install and enable pre-commit locally:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+The repository ships a `.pre-commit-config.yaml` with YAML, formatting, import ordering, lint, and C/C++ formatting hooks.
+
 ### Benchmark modes
 
 Both workflows support the benchmark `mode` input:
@@ -45,22 +70,20 @@ python tools/run_flagtensor_ci.py --smoke --run-perf --exclude-op tensor_contrac
 Run weekly locally in kernel mode:
 
 ```bash
-python tools/run_flagtensor_weekly.py --project-root . --op-list weekly_op_test.txt --gpus 0 --mode kernel --results-dir weekly_results_ci
+python tools/run_flagtensor_weekly.py --project-root . --gpus 0 --mode kernel --results-dir weekly_results_ci
 ```
 
 Run weekly locally in operator mode:
 
 ```bash
-python tools/run_flagtensor_weekly.py --project-root . --op-list weekly_op_test.txt --gpus 0 --mode operator --results-dir weekly_results_ci_operator
+python tools/run_flagtensor_weekly.py --project-root . --gpus 0 --mode operator --results-dir weekly_results_ci_operator
 ```
 
-### Current limitation
+Run weekly with an explicit operator list (optional; generated from registry if omitted):
 
-`tensor_contraction_trinary` is temporarily excluded from automated workflow runs because its `float64` correctness path is not yet stable in CI.
-
-可以通过 `python tools/run_flagtensor_ci.py --op-list tools/ci_op_list.txt` 执行 CI 基准测试。
-
-生成测试结果之后，通过
+```bash
+python tools/run_flagtensor_weekly.py --project-root . --op-list my_ops.txt --gpus 0 --mode kernel --results-dir weekly_results_ci
+```
 
 ```bash
 python tools/generate_flagtensor_html_report.py \

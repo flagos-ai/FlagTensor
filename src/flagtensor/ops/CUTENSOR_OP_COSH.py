@@ -14,5 +14,4 @@ _cosh_kernel, cosh = make_unary_pointwise_from_family(
     "cosh",
     "cosh_like",
     _cosh_scalar,
-    fallback_float64=torch.cosh,
 )

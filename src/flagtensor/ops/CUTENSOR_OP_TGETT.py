@@ -1,7 +1,7 @@
 import torch
 
-from flagtensor.cutensor import tgett as cutensor_tgett
-from flagtensor.ops.CUTENSOR_OP_GETT import _launch_gett_like_kernel
+from flagtensor.cutensor import _normalize_modes
+from flagtensor.ops.CUTENSOR_OP_GETT import _contract_via_triton_gett, _launch_gett_like_kernel
 
 
 def _is_default_2d_tgett_case(a, b, c, mode_a, mode_b, mode_c, mode_d):
@@ -44,20 +44,31 @@ def _validate_triton_tgett_inputs(a, b, c, out):
 
 
 def tgett(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
+    """Transposed general tensor contraction: ``alpha * A^T @ B + beta * C``."""
+    if not a.is_cuda or not b.is_cuda:
+        raise ValueError("input tensors must be on CUDA")
+    if a.dtype != b.dtype:
+        raise TypeError("input tensors must have the same dtype")
+    if c is not None and not c.is_cuda:
+        raise ValueError("addend tensor must be on CUDA")
+    if c is not None and c.dtype != a.dtype:
+        raise TypeError("addend tensor must have the same dtype as inputs")
+    if out is not None and not out.is_cuda:
+        raise ValueError("output tensor must be on CUDA")
+
+    # Fast path: default 2D case
     if _supports_triton_tgett(a, b, c, mode_a, mode_b, mode_c, mode_d):
         _validate_triton_tgett_inputs(a, b, c, out)
         if out is None:
             out = torch.empty((a.shape[1], b.shape[1]), device=a.device, dtype=a.dtype)
         return _launch_gett_like_kernel(a, b, c, out, alpha, beta, trans_a=True, trans_b=False)
-    return cutensor_tgett(
-        a,
-        b,
-        c=c,
-        alpha=alpha,
-        beta=beta,
-        mode_a=mode_a,
-        mode_b=mode_b,
-        mode_c=mode_c,
-        mode_d=mode_d,
-        out=out,
-    )
+
+    # General path: TGETT → GETT with A's last two modes swapped (implicit A^T)
+    if mode_a is not None:
+        mode_a = _normalize_modes(mode_a, a.ndim)
+    else:
+        mode_a = tuple(range(a.ndim))
+    if len(mode_a) >= 2:
+        mode_a = mode_a[:-2] + (mode_a[-1], mode_a[-2])
+
+    return _contract_via_triton_gett(a, b, c, mode_a, mode_b, mode_c, mode_d, alpha, beta, out)

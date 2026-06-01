@@ -50,7 +50,7 @@ class TrinaryGenericBenchmark(Benchmark):
         super().__init__(
             op_name=OP_NAME,
             config=BenchmarkConfig(
-                dtypes=tuple(dtype for dtype in DEFAULT_BENCHMARK_DTYPES if dtype in (torch.float16, torch.float32)),
+                dtypes=tuple(DEFAULT_BENCHMARK_DTYPES),
                 shapes=SMALL_SHAPES,
                 mode="operator",
             ),
@@ -127,7 +127,7 @@ class TrinaryGenericHighRankIndexedBenchmark(Benchmark):
         super().__init__(
             op_name=OP_NAME,
             config=BenchmarkConfig(
-                dtypes=tuple(dtype for dtype in DEFAULT_BENCHMARK_DTYPES if dtype in (torch.float16, torch.float32)),
+                dtypes=tuple(DEFAULT_BENCHMARK_DTYPES),
                 shapes=INDEXED_SHAPES,
                 mode="kernel",
             ),

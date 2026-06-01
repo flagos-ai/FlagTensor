@@ -309,7 +309,7 @@ def _is_default_2d_trinary_case(a, b, c, d, mode_a, mode_b, mode_c, mode_d, mode
 def _supports_triton_trinary(a, b, c, d, mode_a, mode_b, mode_c, mode_d, mode_e):
     if not a.is_cuda or not b.is_cuda or not c.is_cuda:
         return False
-    if a.dtype != b.dtype or a.dtype != c.dtype or a.dtype not in (torch.float16, torch.float32):
+    if a.dtype != b.dtype or a.dtype != c.dtype or a.dtype not in (torch.float16, torch.float32, torch.bfloat16):
         return False
     if d is not None and (not d.is_cuda or d.dtype != a.dtype):
         return False
@@ -317,7 +317,10 @@ def _supports_triton_trinary(a, b, c, d, mode_a, mode_b, mode_c, mode_d, mode_e)
 
 
 def _supports_fused_triton_trinary(a, b, c, d, mode_a, mode_b, mode_c, mode_d, mode_e):
-    return a.dtype == torch.float32 and _supports_triton_trinary(a, b, c, d, mode_a, mode_b, mode_c, mode_d, mode_e)
+    # Fused kernel is currently disabled due to severe performance regression
+    # at medium-to-large problem sizes (BLOCK_L=16 causes excessive iterations).
+    # The two-step GETT launcher path achieves much better performance across all sizes.
+    return False
 
 
 def _validate_triton_trinary_inputs(a, b, c, d, out):
@@ -381,8 +384,11 @@ def tensor_contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=N
         output = out if out is not None else _get_output_tensor(output_shape, device=a.device, dtype=a.dtype)
         if _supports_fused_triton_trinary(a, b, c, addend, mode_a, mode_b, mode_c, mode_d, mode_e):
             return _launch_fused_trinary_kernel(a, b, c, addend, output, alpha, beta)
-        launcher = _get_prepared_trinary_launcher(a, b, c, addend, intermediate_out, output)
-        return launcher(a, b, c, addend, intermediate_out, output, alpha, beta)
+        # Use the two-step GETT launcher only for dtypes the raw GETT kernel supports
+        if a.dtype in (torch.float16, torch.float32, torch.bfloat16):
+            launcher = _get_prepared_trinary_launcher(a, b, c, addend, intermediate_out, output)
+            return launcher(a, b, c, addend, intermediate_out, output, alpha, beta)
+        # Fall through to the generic gett()-based path for unsupported dtypes (e.g. bfloat16)
 
     intermediate = gett(
         a,

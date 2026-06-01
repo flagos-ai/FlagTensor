@@ -15,5 +15,4 @@ _soft_plus_kernel, soft_plus = make_unary_pointwise_from_family(
     "soft_plus",
     "softplus_like",
     _soft_plus_scalar,
-    fallback_float64=F.softplus,
 )

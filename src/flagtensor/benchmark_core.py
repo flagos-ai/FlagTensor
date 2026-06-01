@@ -125,13 +125,14 @@ class Benchmark:
         return args[0]
 
     def verify(self, reference: torch.Tensor, test: torch.Tensor, dtype: torch.dtype):
-        atol = 1e-5 if dtype != torch.float16 else 1e-3
-        rtol = 1e-5 if dtype != torch.float16 else 1e-3
+        from flagtensor.testing.assertions import get_tolerance as _get_tol
+
+        atol, rtol = _get_tol(dtype)
         return torch.allclose(reference, test, atol=atol, rtol=rtol)
 
     def _get_op_slug(self) -> str:
-        prefix = "CUTENSOR_OP_"
-        return self.op_name[len(prefix) :].lower() if self.op_name.startswith(prefix) else self.op_name.lower()
+        _OP_PREFIX = "CUTENSOR_OP_"
+        return self.op_name[len(_OP_PREFIX) :].lower() if self.op_name.startswith(_OP_PREFIX) else self.op_name.lower()
 
     def _get_baseline_store(self):
         baselines = getattr(self, "baselines", None)

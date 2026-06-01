@@ -2196,8 +2196,20 @@ class CuTensorContraction:
         )
         alpha_val = self._scalar_value(alpha, a.dtype)
         beta_val = self._scalar_value(beta, a.dtype)
-        workspace = c_void_p(0)
         workspace_size = c_uint64(0)
+        status = libcutensor.cutensorEstimateWorkspaceSize(
+            self.handle,
+            self.op_desc,
+            self.plan_pref,
+            c_int(CUTENSOR_WORKSPACE_DEFAULT),
+            byref(workspace_size),
+        )
+        if status != 0:
+            raise RuntimeError(f"estimate workspace failed: {status}")
+        workspace = c_void_p(0)
+        if workspace_size.value > 0:
+            workspace_tensor = torch.empty(int(workspace_size.value), device=a.device, dtype=torch.uint8)
+            workspace = c_void_p(workspace_tensor.data_ptr())
         status = libcutensor.cutensorContract(
             self.handle,
             self.plan,

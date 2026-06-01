@@ -3,9 +3,12 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.hypothesis/
+benchmark/chart*/
 benchmark/results_backup*/
 benchmark/results/
 ci_results/
+ci_results_*/
 test_results/
 weekly_results_*/
 weekly_results_ci/
@@ -14,4 +17,5 @@ weekly_benchmark/__pycache__/
 tools/__pycache__/
 src/flagtensor.egg-info/
 weekly_op_test.txt
-ci_results/
+*.html
+!docs/**/*.html

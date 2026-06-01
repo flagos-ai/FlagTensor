@@ -14,6 +14,7 @@ dependencies = [
     "pytest>=7.1.0",
     "matplotlib>=3.7.0",
     "openpyxl>=3.1.0",
+    "PyYAML>=6.0",
 ]
 
 [tool.setuptools]
@@ -21,3 +22,59 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests", "benchmark", "weekly_tests", "weekly_benchmark"]
+markers = [
+    "abs: operator marker",
+    "acos: operator marker",
+    "acosh: operator marker",
+    "add: operator marker",
+    "asin: operator marker",
+    "asinh: operator marker",
+    "atan: operator marker",
+    "atanh: operator marker",
+    "block_sparse_tensor_contraction: operator marker",
+    "ceil: operator marker",
+    "conj: operator marker",
+    "cos: operator marker",
+    "cosh: operator marker",
+    "exp: operator marker",
+    "floor: operator marker",
+    "gett: operator marker",
+    "identity: operator marker",
+    "log: operator marker",
+    "max: operator marker",
+    "min: operator marker",
+    "mish: operator marker",
+    "mul: operator marker",
+    "neg: operator marker",
+    "performance: benchmark performance marker",
+    "rcp: operator marker",
+    "relu: operator marker",
+    "sigmoid: operator marker",
+    "sin: operator marker",
+    "sinh: operator marker",
+    "soft_plus: operator marker",
+    "soft_sign: operator marker",
+    "sqrt: operator marker",
+    "swish: operator marker",
+    "tan: operator marker",
+    "tanh: operator marker",
+    "tensor_contraction_trinary: operator marker",
+    "tgett: operator marker",
+    "trinary_generic: operator marker",
+    "ttgt: operator marker",
+]
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["E203", "W503", "E731", "F405"]

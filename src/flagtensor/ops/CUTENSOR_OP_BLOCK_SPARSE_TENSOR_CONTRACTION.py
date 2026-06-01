@@ -5,7 +5,6 @@ import triton.language as tl
 from flagtensor.cutensor import BlockSparseTensor
 from flagtensor.cutensor import BlockSparseTensorContraction
 from flagtensor.cutensor import BlockSparseTensorDescriptor
-from flagtensor.cutensor import _get_block_sparse_contraction_executor
 from flagtensor.cutensor import _infer_contraction_output_shape
 from flagtensor.cutensor import _normalize_modes
 from flagtensor.ops.CUTENSOR_OP_GETT import _launch_gett_kernel
@@ -159,11 +158,17 @@ def _supports_triton_block_sparse(a, b, c, mode_a, mode_b, mode_c, mode_d):
         return False
     if a.device.type != 'cuda' or b.device.type != 'cuda':
         return False
-    if a.dtype != b.dtype or a.dtype not in (torch.float16, torch.float32):
+    if a.dtype != b.dtype or a.dtype not in (torch.float32,):
         return False
     if c is not None:
         if c.device is None or c.device.type != 'cuda' or c.dtype != a.dtype:
             return False
+
+    # Only uniform block shapes are supported (no irregular section extents)
+    if a.descriptor.block_shape is None or b.descriptor.block_shape is None:
+        return False
+    if c is not None and c.descriptor.block_shape is None:
+        return False
 
     return _is_default_2d_block_sparse_case(a, b, c, mode_a, mode_b, mode_c, mode_d)
 
@@ -182,17 +187,64 @@ def _get_section_extents_for_coord(descriptor, coord):
     )
 
 
-_BLOCK_SPARSE_OUTPUT_CACHE = {}
+_BLOCK_SPARSE_PLAN_CACHE = {}
+_BLOCK_SPARSE_INDEX_CACHE = {}
 
 
-def _get_output_tensor(coord, shape, device, dtype):
-    """Get or create output block tensor."""
-    key = (coord, torch.device(device), tuple(shape), dtype)
-    tensor = _BLOCK_SPARSE_OUTPUT_CACHE.get(key)
-    if tensor is None or tuple(tensor.shape) != tuple(shape) or tensor.device != torch.device(device) or tensor.dtype != dtype:
-        tensor = torch.empty(shape, device=device, dtype=dtype)
-        _BLOCK_SPARSE_OUTPUT_CACHE[key] = tensor
-    return tensor
+def _get_cached_plan(a_desc, b_desc, mode_a, mode_b, mode_d):
+    key = (
+        a_desc.canonical_nonzero_coordinates,
+        b_desc.canonical_nonzero_coordinates,
+        a_desc.block_shape,
+        b_desc.block_shape,
+        mode_a,
+        mode_b,
+        mode_d,
+    )
+    plan = _BLOCK_SPARSE_PLAN_CACHE.get(key)
+    if plan is None:
+        plan = _build_block_contraction_plan(a_desc, b_desc, mode_a, mode_b, mode_d)
+        _BLOCK_SPARSE_PLAN_CACHE[key] = plan
+    return plan
+
+
+def _get_cached_pair_indices(a_desc, b_desc, plan, device):
+    """Build and cache index tensors for batched GEMM.
+
+    Returns (a_idx, b_idx, out_idx, a_coords_sorted, b_coords_sorted, out_coords_sorted)
+    where the idx tensors are 1-D long tensors on the given device.
+    """
+    key = (
+        a_desc.canonical_nonzero_coordinates,
+        b_desc.canonical_nonzero_coordinates,
+        tuple(sorted(plan.keys())),
+        device,
+    )
+    cached = _BLOCK_SPARSE_INDEX_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    a_coords_sorted = tuple(sorted(a_desc.canonical_nonzero_coordinates))
+    b_coords_sorted = tuple(sorted(b_desc.canonical_nonzero_coordinates))
+    out_coords_sorted = tuple(sorted(plan.keys()))
+
+    a_coord_to_idx = {c: i for i, c in enumerate(a_coords_sorted)}
+    b_coord_to_idx = {c: i for i, c in enumerate(b_coords_sorted)}
+
+    a_idx_list, b_idx_list, out_idx_list = [], [], []
+    for out_i, out_coord in enumerate(out_coords_sorted):
+        for a_coord, b_coord in plan[out_coord]:
+            a_idx_list.append(a_coord_to_idx[a_coord])
+            b_idx_list.append(b_coord_to_idx[b_coord])
+            out_idx_list.append(out_i)
+
+    a_idx = torch.tensor(a_idx_list, device=device, dtype=torch.long)
+    b_idx = torch.tensor(b_idx_list, device=device, dtype=torch.long)
+    out_idx = torch.tensor(out_idx_list, device=device, dtype=torch.long)
+
+    result = (a_idx, b_idx, out_idx, a_coords_sorted, b_coords_sorted, out_coords_sorted)
+    _BLOCK_SPARSE_INDEX_CACHE[key] = result
+    return result
 
 
 def block_sparse_tensor_contraction(
@@ -210,7 +262,7 @@ def block_sparse_tensor_contraction(
 ):
     """
     Block-sparse tensor contraction with Triton kernel support.
-    Falls back to dense GETT for unsupported cases.
+    Raises NotImplementedError for cases outside Triton coverage.
     """
     # Normalize modes - only for explicitly provided modes
     try:
@@ -233,8 +285,13 @@ def block_sparse_tensor_contraction(
     if _supports_triton_block_sparse(a, b, c, mode_a, mode_b, mode_c, mode_d):
         _validate_triton_block_sparse_inputs(a, b, c, out)
 
-        # Build contraction plan
-        plan = _build_block_contraction_plan(a.descriptor, b.descriptor, mode_a, mode_b, mode_d)
+        # Apply defaults (matching _is_default_2d_block_sparse_case)
+        mode_a = tuple(mode_a) if mode_a is not None else (0, 1)
+        mode_b = tuple(mode_b) if mode_b is not None else (1, 2)
+        mode_d = tuple(mode_d) if mode_d is not None else (0, 2)
+
+        # Build contraction plan (cached)
+        plan = _get_cached_plan(a.descriptor, b.descriptor, mode_a, mode_b, mode_d)
         if plan is None:
             # Fall through to dense fallback
             pass
@@ -242,84 +299,73 @@ def block_sparse_tensor_contraction(
             # Get output descriptor shape
             output_shape = _infer_contraction_output_shape(a, mode_a, b, mode_b, mode_d)
 
-            # Build output blocks
-            out_blocks = {}
-            for out_coord in plan.keys():
-                # Output block shape: (A's row section extent, B's col section extent)
-                row_extent = a.descriptor.section_extents[0][out_coord[0]]
-                col_extent = b.descriptor.section_extents[1][out_coord[1]]
-                out_block_shape = (row_extent, col_extent)
-                out_blocks[out_coord] = torch.empty(out_block_shape, device=a.device, dtype=a.dtype)
+            # Get output shape
+            output_shape = _infer_contraction_output_shape(a, mode_a, b, mode_b, mode_d)
 
-            # Process each output block
-            for out_coord, pairs in plan.items():
-                out_block = out_blocks[out_coord]
+            # Get cached index tensors and sorted coordinates
+            a_idx, b_idx, out_idx, a_coords_sorted, b_coords_sorted, out_coords_sorted = \
+                _get_cached_pair_indices(a.descriptor, b.descriptor, plan, a.device)
 
-                # Initialize with beta * C if C is provided and matches this output block
-                addend_block = None
-                if c is not None and out_coord in c.blocks:
-                    addend_block = c.blocks[out_coord]
-                    if beta != 0.0:
-                        out_block.copy_(addend_block * beta)
-                    else:
-                        out_block.zero_()
-                else:
-                    out_block.zero_()
+            # Stack all non-zero blocks into flat tensors
+            a_flat = torch.stack([a.blocks[c] for c in a_coords_sorted])
+            b_flat = torch.stack([b.blocks[c] for c in b_coords_sorted])
 
-                # Accumulate contributions from all (A, B) pairs
-                for a_coord, b_coord in pairs:
-                    a_block = a.blocks[a_coord]
-                    b_block = b.blocks[b_coord]
+            # Single batched GEMM: index-select pairs, compute all at once
+            a_batch = a_flat[a_idx]
+            b_batch = b_flat[b_idx]
+            result = alpha * torch.bmm(a_batch, b_batch)
 
-                    # Check if we need intermediate buffer
-                    temp_out = torch.empty_like(out_block) if len(pairs) > 1 else out_block
+            # Scatter-accumulate into flat output via index_add
+            num_out = len(out_coords_sorted)
+            bm = a.descriptor.section_extents[0][out_coords_sorted[0][0]]
+            bn = b.descriptor.section_extents[1][out_coords_sorted[0][1]]
+            out_flat = torch.zeros((num_out, bm, bn), device=a.device, dtype=a.dtype)
+            out_flat.index_add_(0, out_idx, result)
 
-                    _launch_block_sparse_gemm(
-                        a_block, b_block,
-                        None if len(pairs) > 1 else addend_block,
-                        temp_out,
-                        alpha if len(pairs) == 1 else alpha,  # Only apply alpha once if single pair
-                        0.0 if len(pairs) > 1 else (beta if addend_block is not None else 0.0),
-                    )
+            # Build output directly as dense tensor (bypass dict + BlockSparseTensor + to_dense)
+            dense_out = torch.zeros(output_shape, device=a.device, dtype=a.dtype)
 
-                    if len(pairs) > 1:
-                        out_block.add_(temp_out)
+            # Pre-compute section offsets for scatter
+            num_rows = max(c[0] for c in out_coords_sorted) + 1
+            num_cols = max(c[1] for c in out_coords_sorted) + 1
+            row_offsets = [0]
+            for i in range(num_rows):
+                row_offsets.append(row_offsets[-1] + a.descriptor.section_extents[0][i])
+            col_offsets = [0]
+            for j in range(num_cols):
+                col_offsets.append(col_offsets[-1] + b.descriptor.section_extents[1][j])
 
-            # Create output BlockSparseTensor
-            # Derive output block_shape and section_extents from actual output blocks
-            if out_blocks:
-                first_coord = next(iter(out_blocks.keys()))
-                first_block = out_blocks[first_coord]
-                out_block_shape = first_block.shape
+            # Scatter each result block into the dense output
+            for k, (i, j) in enumerate(out_coords_sorted):
+                dense_out[row_offsets[i]:row_offsets[i+1], col_offsets[j]:col_offsets[j+1]] = out_flat[k]
 
-                # Build section_extents for output
-                num_rows = max(coord[0] for coord in out_blocks.keys()) + 1
-                num_cols = max(coord[1] for coord in out_blocks.keys()) + 1
-                row_extents = [0] * num_rows
-                col_extents = [0] * num_cols
-                for (r, c), block in out_blocks.items():
-                    row_extents[r] = block.shape[0]
-                    col_extents[c] = block.shape[1]
-                out_section_extents = (tuple(row_extents), tuple(col_extents))
+            # Apply beta * C addend
+            if c is not None and beta != 0.0:
+                c_dense = c.to_dense()
+                dense_out.add_(c_dense, alpha=beta)
 
-                out_descriptor = BlockSparseTensorDescriptor(
-                    shape=output_shape,
-                    block_shape=out_block_shape,
-                    num_sections_per_mode=(num_rows, num_cols),
-                    section_extents=out_section_extents,
-                    nonzero_coordinates=tuple(sorted(out_blocks.keys())),
-                )
-                return BlockSparseTensor(out_descriptor, out_blocks).to_dense()
-            else:
-                # Empty output
-                return torch.zeros(output_shape, device=a.device, dtype=a.dtype)
+            # Mask output by C's sparsity pattern (output must match C's nonzero layout)
+            if c is not None:
+                c_row_offsets = [0]
+                for extent in c.descriptor.section_extents[0]:
+                    c_row_offsets.append(c_row_offsets[-1] + extent)
+                c_col_offsets = [0]
+                for extent in c.descriptor.section_extents[1]:
+                    c_col_offsets.append(c_col_offsets[-1] + extent)
+                mask = torch.zeros(output_shape, device=a.device, dtype=a.dtype)
+                for coord in c.descriptor.canonical_nonzero_coordinates:
+                    r_start, r_end = c_row_offsets[coord[0]], c_row_offsets[coord[0] + 1]
+                    c_start, c_end = c_col_offsets[coord[1]], c_col_offsets[coord[1] + 1]
+                    mask[r_start:r_end, c_start:c_end] = 1.0
+                dense_out.mul_(mask)
 
-    # Fallback to dense GETT via the existing executor
-    executor = _get_block_sparse_contraction_executor(a.dtype)
-    return executor(
-        a, b, c=c, alpha=alpha, beta=beta,
-        mode_a=mode_a, mode_b=mode_b, mode_c=mode_c, mode_d=mode_d,
-        out=out,
+            return dense_out
+
+    raise NotImplementedError(
+        "Block-sparse tensor contraction is only supported for 2D float32 tensors "
+        "with default mode labels and checkerboard nonzero patterns. "
+        "ND, complex, float16, and irregular section patterns are not yet supported "
+        "by the Triton path."
     )
 
 

@@ -1,0 +1,151 @@
+name: flagtensor-release
+
+on:
+  release:
+    types: [published, prereleased]
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type (patch/minor/major)"
+        required: false
+        default: "patch"
+      publish_to_pypi:
+        description: "Publish to PyPI (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: Build package
+        run: |
+          python -m build
+
+      - name: Check package
+        run: |
+          twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flagtensor-release-dist
+          path: dist/
+
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate release notes
+        run: |
+          python - <<'PY'
+import json
+from pathlib import Path
+from datetime import datetime
+
+# Load registry for operator inventory
+import sys
+sys.path.insert(0, "src")
+from flagtensor_registry import load_operator_registry
+
+registry = list(load_operator_registry())
+active = [s for s in registry if s.is_active and not s.is_blocked]
+blocked = [s for s in registry if s.is_blocked]
+
+notes = f"""# FlagTensor v$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])") Release Notes
+
+**Release Date:** {datetime.utcnow().strftime("%Y-%m-%d")}
+
+## Overview
+
+FlagTensor is a Triton-based operator library benchmarked against cuTensor baselines,
+supporting kernel/operator/wrapper benchmarking modes.
+
+## Operator Coverage
+
+- **Total operators:** {len(registry)}
+- **Active:** {len(active)}
+- **Blocked:** {len(blocked)}
+
+### Categories
+
+| Category | Count | Operators |
+|----------|-------|-----------|
+"""
+cats = {}
+for s in active:
+    cats.setdefault(s.category, []).append(s.name)
+for cat_name, ops in sorted(cats.items()):
+    notes += f"| {cat_name} | {len(ops)} | {', '.join(ops)} |\n"
+
+if blocked:
+    notes += f"""
+### Blocked / Known Issues
+"""
+    for s in blocked:
+        notes += f"- **{s.name}**: {s.skip_reason or 'no reason provided'}\n"
+
+notes += f"""
+
+## Benchmark Modes
+
+- **kernel**: Direct Triton kernel invocation, best for micro-benchmarking
+- **operator**: Full Python API path including dispatch overhead
+- **wrapper**: cuTensor wrapper comparison for controlled comparison
+
+## Compatibility
+
+- Requires: CUDA >= 11.8, PyTorch >= 2.2.0, Triton >= 3.3.0
+- Tested on: NVIDIA H20 (Hopper architecture)
+"""
+
+Path("release_notes.md").write_text(notes)
+print("Release notes generated: release_notes.md")
+PY
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: flagtensor-release-notes
+          path: release_notes.md
+
+  publish:
+    needs: [build]
+    if: github.event.inputs.publish_to_pypi == 'true' || github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: flagtensor-release-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        if: github.event.inputs.publish_to_pypi == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} dist/* --repo ${{ github.repository }}

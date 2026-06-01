@@ -32,7 +32,7 @@ _UNARY_FAMILY_RULES = {
     "sinh_like": ("sinh_exp_pair", "sinh_exp_recip"),
     "softsign_like": ("softsign_abs", "softsign_piecewise"),
     "sqrt_like": ("sqrt_intrinsic", "sqrt_rsqrt"),
-    "tan_like": ("tan_divide", "tan_recip_divide"),
+    "tan_like": ("tan_libdevice", "tan_divide"),
     "tanh_like": ("tanh_exp2", "tanh_exp"),
     "softplus_like": ("softplus_where", "softplus_max"),
     "swish_like": ("swish_exp2", "swish_exp"),
@@ -470,6 +470,15 @@ def _build_sqrt_rsqrt_variant(scalar_fn):
     return _variant
 
 
+@_register_unary_rewrite("tan_libdevice")
+def _build_tan_libdevice_variant(scalar_fn):
+    @triton.jit
+    def _variant(x):
+        return libdevice.tan(x.to(tl.float32))
+
+    return _variant
+
+
 @_register_unary_rewrite("tan_divide")
 def _build_tan_divide_variant(scalar_fn):
     @triton.jit
@@ -642,19 +651,14 @@ def _build_unary_kernel(op_name: str, variant0, variant1):
     ):
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
+        offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
         if KERNEL_ID == 0:
-            offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-            mask = offsets < n_elements
-            x = tl.load(x_ptr + offsets, mask=mask)
             y = variant0(x)
-            tl.store(y_ptr + offsets, y, mask=mask)
         else:
-            for block_idx in tl.static_range(0, BLOCKS_PER_PROGRAM):
-                offsets = block_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                mask = offsets < n_elements
-                x = tl.load(x_ptr + offsets, mask=mask)
-                y = variant1(x)
-                tl.store(y_ptr + offsets, y, mask=mask)
+            y = variant1(x)
+        tl.store(y_ptr + offsets, y, mask=mask)
 
     _kernel.__name__ = f"_{op_name}_kernel"
     return _kernel
@@ -664,11 +668,13 @@ def _default_prepare(x: torch.Tensor) -> Tuple[Optional[torch.Tensor], torch.Ten
     return None, x
 
 
+# Dtypes supported by our Triton unary kernels
+_SUPPORTED_UNARY_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
+
 class _UnaryPointwiseExecutor:
-    def __init__(self, kernel, prepare_input, fallback_float64):
+    def __init__(self, kernel, prepare_input):
         self.kernel = kernel
         self.prepare_input = prepare_input
-        self.fallback_float64 = fallback_float64
         self.layout_cache = {}
 
     def _layout_key(self, x: torch.Tensor):
@@ -687,11 +693,14 @@ class _UnaryPointwiseExecutor:
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if not x.is_cuda:
             raise ValueError("input tensor must be on CUDA")
+        if x.dtype not in _SUPPORTED_UNARY_DTYPES:
+            raise ValueError(
+                f"unsupported dtype {x.dtype} for unary operator; "
+                f"supported: {_SUPPORTED_UNARY_DTYPES}"
+            )
         handled, prepared_x = self.prepare_input(x)
         if handled is not None:
             return handled
-        if prepared_x.dtype == torch.float64 and self.fallback_float64 is not None:
-            return self.fallback_float64(prepared_x)
 
         layout_key = self._layout_key(prepared_x)
         plan = self.layout_cache.get(layout_key)
@@ -713,14 +722,13 @@ def make_unary_pointwise(
     variant0,
     variant1,
     *,
-    fallback_float64: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     prepare_input: Optional[
         Callable[[torch.Tensor], Tuple[Optional[torch.Tensor], torch.Tensor]]
     ] = None,
 ):
     kernel = _build_unary_kernel(op_name, variant0, variant1)
     prepare = prepare_input or _default_prepare
-    executor = _UnaryPointwiseExecutor(kernel, prepare, fallback_float64)
+    executor = _UnaryPointwiseExecutor(kernel, prepare)
 
     def op(x: torch.Tensor) -> torch.Tensor:
         return executor(x)
@@ -734,7 +742,6 @@ def make_unary_pointwise_from_family(
     family: str,
     scalar_fn,
     *,
-    fallback_float64: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     prepare_input: Optional[
         Callable[[torch.Tensor], Tuple[Optional[torch.Tensor], torch.Tensor]]
     ] = None,
@@ -747,6 +754,5 @@ def make_unary_pointwise_from_family(
         op_name,
         variant0,
         variant1,
-        fallback_float64=fallback_float64,
         prepare_input=prepare_input,
     )

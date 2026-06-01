@@ -1,6 +1,7 @@
 import hashlib
 import inspect
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import triton
+
+logger = logging.getLogger(__name__)
 
 from flagtensor.runtime import device, torch_device_fn
 
@@ -375,9 +378,11 @@ class LibTuner(triton.runtime.Autotuner):
             config = self.configs[0]
         self.best_config = config
         if os.getenv("TRITON_PRINT_AUTOTUNING") == "1" and not used_cached_result:
-            print(
-                f"Triton autotuning for function {self.base_fn.__name__} finished after "
-                f"{self.bench_time:.2f}s; best config selected: {self.best_config};"
+            logger.info(
+                "Triton autotuning for function %s finished after %.2fs; best config selected: %s;",
+                self.base_fn.__name__,
+                self.bench_time,
+                self.best_config,
             )
         if config.pre_hook is not None:
             full_nargs = {**self.nargs, **kwargs, **_config_all_kwargs(config)}

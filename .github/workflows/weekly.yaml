@@ -1,12 +1,14 @@
 name: flagtensor-weekly
 
 on:
+  schedule:
+    - cron: "0 2 * * 0"
   workflow_dispatch:
     inputs:
       op_list:
-        description: "Path to operator list file"
+        description: "Path to operator list file (optional, generated from registry if empty)"
         required: false
-        default: "weekly_op_test.txt"
+        default: ""
       gpus:
         description: "GPU ids passed to weekly runner"
         required: false
@@ -30,23 +32,17 @@ jobs:
           python -m pip install .
       - name: Prepare weekly operator list
         run: |
-          if [ -f "${{ github.event.inputs.op_list || 'weekly_op_test.txt' }}" ]; then
-            cp "${{ github.event.inputs.op_list || 'weekly_op_test.txt' }}" ci_weekly_ops.txt
-          else
-            python - <<'PY'
-from pathlib import Path
-from tools.run_flagtensor_ci import discover_ops
-
-Path('ci_weekly_ops.txt').write_text('\n'.join(discover_ops()) + '\n', encoding='utf-8')
-PY
-          fi
           python - <<'PY'
+import sys
+sys.path.insert(0, 'src')
 from pathlib import Path
+from flagtensor_registry import load_operator_registry
 
-path = Path('ci_weekly_ops.txt')
-ops = [line.strip() for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
-ops = [op for op in ops if op != 'tensor_contraction_trinary']
-path.write_text('\n'.join(ops) + ('\n' if ops else ''), encoding='utf-8')
+ops = [
+    spec.name for spec in load_operator_registry()
+    if spec.is_active and not spec.is_blocked
+]
+Path('ci_weekly_ops.txt').write_text('\n'.join(ops) + '\n', encoding='utf-8')
 PY
       - name: Run weekly runner
         run: |

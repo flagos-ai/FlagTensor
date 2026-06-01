@@ -14,5 +14,4 @@ _sqrt_kernel, sqrt = make_unary_pointwise_from_family(
     "sqrt",
     "sqrt_like",
     _sqrt_scalar,
-    fallback_float64=torch.sqrt,
 )

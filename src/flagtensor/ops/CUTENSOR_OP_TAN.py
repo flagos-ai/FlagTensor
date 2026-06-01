@@ -14,5 +14,4 @@ _tan_kernel, tan = make_unary_pointwise_from_family(
     "tan",
     "tan_like",
     _tan_scalar,
-    fallback_float64=torch.tan,
 )

@@ -14,5 +14,4 @@ _soft_sign_kernel, soft_sign = make_unary_pointwise_from_family(
     "soft_sign",
     "softsign_like",
     _soft_sign_scalar,
-    fallback_float64=lambda x: x / (torch.abs(x) + 1),
 )

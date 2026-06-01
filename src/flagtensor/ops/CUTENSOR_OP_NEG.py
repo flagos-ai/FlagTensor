@@ -14,5 +14,4 @@ _neg_kernel, neg = make_unary_pointwise_from_family(
     "neg",
     "neg_like",
     _neg_scalar,
-    fallback_float64=torch.neg,
 )

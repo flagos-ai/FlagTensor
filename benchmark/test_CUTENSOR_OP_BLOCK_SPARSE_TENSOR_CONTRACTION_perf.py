@@ -11,7 +11,6 @@ from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_BENCHMARK_SHAPES
 from flagtensor.cutensor import CuTensorBlockSparseContraction
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _build_block_contraction_plan
-from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _get_output_tensor
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _get_section_extents_for_coord
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _launch_block_sparse_gemm
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
@@ -181,7 +180,7 @@ class BlockSparseTensorContractionBenchmark(Benchmark):
     def build_baseline_kernel_callable(self, *args):
         a, b, c = args
         # Only support default 2D block-sparse case with cuTensor
-        if a.dtype not in (torch.float32, torch.float64, torch.complex64, torch.complex128):
+        if a.dtype not in (torch.float32, torch.complex64, torch.complex128):
             return None
 
         baseline = CuTensorBlockSparseContraction(dtype=a.dtype)
