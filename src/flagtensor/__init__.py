@@ -38,7 +38,10 @@ from flagtensor.ops.CUTENSOR_OP_TAN import tan
 from flagtensor.ops.CUTENSOR_OP_TANH import tanh
 from flagtensor.ops.CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY import tensor_contraction_trinary
 from flagtensor.ops.CUTENSOR_OP_TGETT import tgett
-from flagtensor.ops.CUTENSOR_OP_TRINARY_GENERIC import trinary
+try:
+    from flagtensor.ops.CUTENSOR_OP_TRINARY_GENERIC import trinary
+except Exception:
+    trinary = None
 from flagtensor.ops.CUTENSOR_OP_TTGT import ttgt
 
 __all__ = ["BlockSparseTensor", "BlockSparseTensorContraction", "BlockSparseTensorDescriptor", "add", "abs", "acosh", "acos", "asin", "asinh", "atan", "atanh", "block_sparse_tensor_contraction", "ceil", "exp", "floor", "gett", "identity", "log", "mish", "min", "max", "mul", "soft_plus", "soft_sign", "sqrt", "relu", "conj", "cos", "cosh", "neg", "rcp", "sigmoid", "sin", "sinh", "swish", "tan", "tanh", "tensor_contraction_trinary", "tgett", "trinary", "ttgt"]

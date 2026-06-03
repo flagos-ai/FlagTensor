@@ -22,7 +22,7 @@ _UNARY_FAMILY_RULES = {
     "cosh_like": ("cosh_exp_pair", "cosh_exp_recip"),
     "exp_like": ("exp_intrinsic", "exp2_scaled"),
     "floor_like": ("floor_intrinsic", "floor_ceil_adjust"),
-    "identity_like": ("identity_direct", "identity_f32"),
+    "identity_like": ("identity_direct", "identity_direct"),
     "log_like": ("log_intrinsic", "log2_scaled"),
     "neg_like": ("neg_direct", "neg_sub"),
     "rcp_like": ("rcp_direct", "rcp_exp_log"),
@@ -632,36 +632,85 @@ def _resolve_family_variants(
 
 
 def _build_unary_kernel(op_name: str, variant0, variant1):
-    @libtuner(
-        configs=runtime.get_tuned_config("elementwise_unary"),
-        key=["n_elements"],
-        strategy=["align32"],
-        warmup=5,
-        rep=10,
-    )
-    @triton.heuristics(runtime.get_heuristic_config("elementwise_unary"))
-    @triton.jit
-    def _kernel(
-        x_ptr,
-        y_ptr,
-        n_elements,
-        BLOCK_SIZE: tl.constexpr,
-        BLOCKS_PER_PROGRAM: tl.constexpr,
-        KERNEL_ID: tl.constexpr,
-    ):
-        pid = tl.program_id(axis=0)
-        block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
-        offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-        mask = offsets < n_elements
-        x = tl.load(x_ptr + offsets, mask=mask)
-        if KERNEL_ID == 0:
-            y = variant0(x)
-        else:
-            y = variant1(x)
-        tl.store(y_ptr + offsets, y, mask=mask)
+    # Triton 3.3 JIT 编译器的 JITFunction.__init__ 依赖
+    # inspect.getsourcelines(fn) 获取源码，且 AST→TTIR 阶段无法解析
+    # Python 闭包变量 (free variable)。将 kernel 写入 .py 文件后通过
+    # importlib 加载，使 inspect 能定位源码，同时将 variant 函数
+    # 及其闭包依赖全部注入为模块全局变量来绕开限制。
+    import os
+    import sys
+    import importlib.util
 
-    _kernel.__name__ = f"_{op_name}_kernel"
-    return _kernel
+    cache_dir = os.path.join(os.path.dirname(__file__), "__kernels__")
+    os.makedirs(cache_dir, exist_ok=True)
+
+    module_name = f"_gen_{op_name}"
+    file_path = os.path.join(cache_dir, f"{module_name}.py")
+
+    with open(file_path, "w") as f:
+        f.write(f"""import triton
+import triton.language as tl
+from flagtensor import runtime
+from flagtensor.utils.libtuner import libtuner
+
+@libtuner(
+    configs=runtime.get_tuned_config("elementwise_unary"),
+    key=["n_elements"],
+    strategy=["align32"],
+    warmup=5,
+    rep=10,
+)
+@triton.heuristics(runtime.get_heuristic_config("elementwise_unary"))
+@triton.jit
+def _{op_name}_kernel(
+    x_ptr,
+    y_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCKS_PER_PROGRAM: tl.constexpr,
+    KERNEL_ID: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
+    offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    if KERNEL_ID == 0:
+        y = _variant0(x)
+    else:
+        y = _variant1(x)
+    tl.store(y_ptr + offsets, y, mask=mask)
+
+result = _{op_name}_kernel
+result.__name__ = "_{op_name}_kernel"
+""")
+
+    if module_name in sys.modules:
+        del sys.modules[module_name]
+
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    mod = importlib.util.module_from_spec(spec)
+
+    mod._variant0 = variant0
+    mod._variant1 = variant1
+
+    # variant 函数本身可能也有闭包依赖（如 scalar_fn），一并注入
+    for variant in (variant0, variant1):
+        # JITFunction 包装了一层，闭包在 .fn 上
+        inner = getattr(variant, "fn", variant)
+        closure = getattr(inner, "__closure__", None)
+        if closure:
+            freevars = getattr(inner, "__code__", None)
+            if freevars:
+                for cell, name in zip(closure, freevars.co_freevars):
+                    if not hasattr(mod, name):
+                        setattr(mod, name, cell.cell_contents)
+
+    sys.modules[module_name] = mod
+    spec.loader.exec_module(mod)
+
+    sys.modules.pop(module_name, None)
+    return mod.result
 
 
 def _default_prepare(x: torch.Tensor) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
