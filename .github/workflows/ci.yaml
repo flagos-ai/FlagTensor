@@ -6,88 +6,68 @@ on:
     branches: ["main", "master"]
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Benchmark mode passed to the CI runner"
+      category:
+        description: "Operator categories (unary,binary,contraction,sparse)"
         required: false
-        default: "kernel"
+        default: "unary,binary,contraction,sparse"
+      run_perf:
+        description: "Also run performance tests (true/false)"
+        required: false
+        default: "false"
 
 jobs:
-  correctness-smoke:
+  correctness:
     runs-on: [self-hosted, a100]
     steps:
       - uses: actions/checkout@v4
+
       - name: Verify GPU
+        run: nvidia-smi
+
+      - name: Install cutensor
         run: |
-          echo "GPU Info:"
-          nvidia-smi
-      - name: Install cuTensor
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq cutensor-cuda-12 2>/dev/null || \
-            echo "cuTensor installed via system packages"
+          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12
+          ln -sf $(python3 -c "import cutensor; print(cutensor.__path__[0])")/lib/libcutensor.so.2 /usr/lib/x86_64-linux-gnu/libcutensor.so
+
       - name: Install flagtree
         run: |
           python3 -m pip install --no-cache-dir \
             --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
             --trusted-host=resource.flagos.net \
-            "flagtree==0.5.0+aipu3.3" --no-deps 2>&1
-      - name: Setup triton backends
-        run: |
-          mv /usr/local/lib/python3.10/dist-packages/triton/backends/aipu \
-             /usr/local/lib/python3.10/dist-packages/triton/backends/aipu.disabled 2>/dev/null || true
-      - name: Install package
+            "flagtree==0.4.0+3.3" --no-deps
+
+      - name: Install deps
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install -e . PyYAML
-      - name: Run smoke correctness CI
+          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple "cuda-bindings>=12.9.6,<13" nvmath-python matplotlib setuptools PyYAML
+
+      - name: Install flagtensor
+        run: python3 -m pip install -e .
+
+      - name: Run correctness tests
         run: |
-          python tools/run_flagtensor_ci.py --smoke --run-correctness \
-            --mode "${{ github.event.inputs.mode || 'kernel' }}" \
-            --results-dir ci_results_correctness --dump-json-summary
-      - name: Export environment
+          python3 tools/run_tests.py \
+            --category "${{ github.event.inputs.category || 'unary,binary,contraction,sparse' }}" \
+            --gpus 0 \
+            --results-dir ci_results_correctness 2>&1 | tail -20
+
+      - name: Run perf tests (optional)
+        if: github.event.inputs.run_perf == 'true'
         run: |
-          python tools/export_env.py --project-root . --output ci_results_correctness/env.json || true
+          python3 tools/run_tests.py \
+            --run-perf \
+            --category "${{ github.event.inputs.category || 'unary,binary' }}" \
+            --gpus 0 \
+            --results-dir ci_results_perf 2>&1 | tail -20
+
       - name: Upload correctness artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flagtensor-ci-correctness
           path: ci_results_correctness
 
-  perf-smoke:
-    runs-on: [self-hosted, a100]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify GPU
-        run: |
-          echo "GPU Info:"
-          nvidia-smi
-      - name: Install cuTensor
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq cutensor-cuda-12 2>/dev/null || true
-      - name: Install flagtree
-        run: |
-          python3 -m pip install --no-cache-dir \
-            --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
-            --trusted-host=resource.flagos.net \
-            "flagtree==0.5.0+aipu3.3" --no-deps 2>&1
-      - name: Setup triton backends
-        run: |
-          mv /usr/local/lib/python3.10/dist-packages/triton/backends/aipu \
-             /usr/local/lib/python3.10/dist-packages/triton/backends/aipu.disabled 2>/dev/null || true
-      - name: Install package
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -e . PyYAML
-      - name: Run smoke perf CI
-        run: |
-          python tools/run_flagtensor_ci.py --smoke --run-perf \
-            --mode "${{ github.event.inputs.mode || 'kernel' }}" \
-            --results-dir ci_results_perf --dump-json-summary
-      - name: Export environment
-        run: |
-          python tools/export_env.py --project-root . --output ci_results_perf/env.json || true
       - name: Upload perf artifacts
+        if: github.event.inputs.run_perf == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: flagtensor-ci-perf

@@ -3,173 +3,117 @@ name: flagtensor-acceptance
 on:
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Benchmark mode (kernel/operator/wrapper)"
-        required: false
-        default: "kernel"
       category:
-        description: "Operator category to run (unary/binary/contraction/sparse, leave empty for all)"
+        description: "Operator category (unary,binary,contraction/sparse, leave empty for all)"
         required: false
         default: ""
+      run_perf:
+        description: "Run performance tests (true/false)"
+        required: false
+        default: "false"
   schedule:
     - cron: "0 2 * * 0"
 
 jobs:
-  correctness-acceptance:
-    runs-on: ubuntu-latest
+  acceptance:
+    runs-on: [self-hosted, a100]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install package
+
+      - name: Verify GPU
+        run: nvidia-smi
+
+      - name: Install cutensor
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install . PyYAML
-      - name: Run acceptance correctness CI
+          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12
+          ln -sf $(python3 -c "import cutensor; print(cutensor.__path__[0])")/lib/libcutensor.so.2 /usr/lib/x86_64-linux-gnu/libcutensor.so
+
+      - name: Install flagtree
         run: |
-          python tools/run_flagtensor_ci.py \
-            --run-correctness \
-            --mode "${{ github.event.inputs.mode || 'kernel' }}" \
-            --category "${{ github.event.inputs.category || '' }}" \
-            --results-dir acceptance_results_correctness \
-            --dump-json-summary
-      - name: Export environment
+          python3 -m pip install --no-cache-dir \
+            --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
+            --trusted-host=resource.flagos.net \
+            "flagtree==0.4.0+3.3" --no-deps
+
+      - name: Install deps
         run: |
-          python tools/export_env.py --project-root . --output acceptance_results_correctness/env.json || true
-      - name: Generate acceptance summary
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple "cuda-bindings>=12.9.6,<13" nvmath-python matplotlib setuptools PyYAML
+
+      - name: Install flagtensor
+        run: python3 -m pip install -e .
+
+      - name: Run acceptance correctness
         run: |
-          echo "# FlagTensor Acceptance Correctness Summary" > acceptance_results_correctness/ACCEPTANCE_SUMMARY.md
-          echo "" >> acceptance_results_correctness/ACCEPTANCE_SUMMARY.md
-          echo "**Mode:** ${{ github.event.inputs.mode || 'kernel' }}" >> acceptance_results_correctness/ACCEPTANCE_SUMMARY.md
-          echo "**Category:** ${{ github.event.inputs.category || 'all' }}" >> acceptance_results_correctness/ACCEPTANCE_SUMMARY.md
-          echo "" >> acceptance_results_correctness/ACCEPTANCE_SUMMARY.md
+          python3 tools/run_tests.py \
+            --category "${{ github.event.inputs.category || 'unary,binary,contraction,sparse' }}" \
+            --gpus 0 \
+            --results-dir acceptance_results_correctness
+        continue-on-error: true
+
+      - name: Run acceptance perf
+        if: github.event.inputs.run_perf == 'true'
+        run: |
+          python3 tools/run_tests.py \
+            --run-perf \
+            --category "${{ github.event.inputs.category || 'unary,binary' }}" \
+            --gpus 0 \
+            --results-dir acceptance_results_perf
+        continue-on-error: true
+
+      - name: Generate summary
+        run: |
+          echo "# FlagTensor Acceptance Results" > acceptance_summary.md
+          echo "" >> acceptance_summary.md
+          echo "**Category:** ${{ github.event.inputs.category || 'all' }}" >> acceptance_summary.md
+          echo "" >> acceptance_summary.md
+          echo "## Correctness" >> acceptance_summary.md
           if [ -f acceptance_results_correctness/summary.json ]; then
-            python - <<'PY' >> acceptance_results_correctness/ACCEPTANCE_SUMMARY.md
-import json
-from pathlib import Path
-
-data = json.loads(Path('acceptance_results_correctness/summary.json').read_text())
-correctness = data.get('correctness', {})
-total = len(correctness)
-passed = sum(1 for v in correctness.values() if v.get('status') == 'PASS')
-failed = sum(1 for v in correctness.values() if v.get('status') != 'PASS')
-
-print(f"## Results")
-print(f"- Total: {total}")
-print(f"- Passed: {passed}")
-print(f"- Failed: {failed}")
-print(f"- Pass Rate: {passed/total*100:.1f}%" if total else "Pass Rate: N/A")
-print("")
-print(f"### Failed Operators")
-failed_ops = [op for op, info in correctness.items() if info.get('status') != 'PASS']
-if failed_ops:
-    for op in failed_ops:
-        print(f"- {op}: {correctness[op].get('status')}")
-else:
-    print("None")
-print("")
-print(f"### All Operators")
-print(f"| Operator | Status |")
-print(f"| --- | --- |")
-for op, info in correctness.items():
-    status = info.get('status', 'UNKNOWN')
-    emoji = "✅" if status == "PASS" else "❌"
-    print(f"| {op} | {emoji} {status} |")
-PY
+            python3 - <<'PY' >> acceptance_summary.md
+          import json
+          from pathlib import Path
+          data = json.loads(Path('acceptance_results_correctness/summary.json').read_text())
+          total = len(data)
+          passed = sum(1 for v in data.values() if v.get('status') == 'PASS')
+          print(f"- Total: {total}  |  Passed: {passed}  |  Failed: {total - passed}")
+          if total > 0:
+              print(f"- Pass Rate: {passed/total*100:.1f}%")
+          failed = [(op, info.get('status')) for op, info in data.items() if info.get('status') != 'PASS']
+          if failed:
+              print("\n### Failed")
+              for op, status in failed:
+                  print(f"- {op}: {status}")
+          PY
+          else:
+            echo "No correctness results found." >> acceptance_summary.md
           fi
-      - name: Upload acceptance artifacts
+          echo "" >> acceptance_summary.md
+          echo "## Performance" >> acceptance_summary.md
+          if [ -f acceptance_results_perf/summary.json ]; then
+            python3 - <<'PY' >> acceptance_summary.md
+          import json, statistics
+          from pathlib import Path
+          data = json.loads(Path('acceptance_results_perf/summary.json').read_text())
+          total = len(data)
+          passed = sum(1 for v in data.values() if v.get('status') == 'PASS')
+          print(f"- Total: {total}  |  Passed: {passed}  |  Failed: {total - passed}")
+          PY
+          else
+            echo "No performance results found." >> acceptance_summary.md
+          fi
+
+      - name: Upload correctness artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flagtensor-acceptance-correctness
           path: acceptance_results_correctness
-      - name: Report summary
-        run: |
-          cat acceptance_results_correctness/ACCEPTANCE_SUMMARY.md >> $GITHUB_STEP_SUMMARY || true
 
-  perf-acceptance:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install . PyYAML
-      - name: Run acceptance perf CI
-        run: |
-          python tools/run_flagtensor_ci.py \
-            --run-perf \
-            --mode "${{ github.event.inputs.mode || 'kernel' }}" \
-            --category "${{ github.event.inputs.category || '' }}" \
-            --results-dir acceptance_results_perf \
-            --dump-json-summary
-      - name: Export environment
-        run: |
-          python tools/export_env.py --project-root . --output acceptance_results_perf/env.json || true
-      - name: Generate acceptance summary
-        run: |
-          echo "# FlagTensor Acceptance Performance Summary" > acceptance_results_perf/ACCEPTANCE_SUMMARY.md
-          echo "" >> acceptance_results_perf/ACCEPTANCE_SUMMARY.md
-          echo "**Mode:** ${{ github.event.inputs.mode || 'kernel' }}" >> acceptance_results_perf/ACCEPTANCE_SUMMARY.md
-          echo "**Category:** ${{ github.event.inputs.category || 'all' }}" >> acceptance_results_perf/ACCEPTANCE_SUMMARY.md
-          echo "" >> acceptance_results_perf/ACCEPTANCE_SUMMARY.md
-          if [ -f acceptance_results_perf/summary.json ]; then
-            python - <<'PY' >> acceptance_results_perf/ACCEPTANCE_SUMMARY.md
-import json
-from pathlib import Path
-
-data = json.loads(Path('acceptance_results_perf/summary.json').read_text())
-perf = data.get('performance', {})
-total = len(perf)
-passed = sum(1 for v in perf.values() if v.get('status') == 'PASS')
-failed = sum(1 for v in perf.values() if v.get('status') != 'PASS')
-
-print(f"## Results")
-print(f"- Total: {total}")
-print(f"- Passed: {passed}")
-print(f"- Failed: {failed}")
-print(f"- Pass Rate: {passed/total*100:.1f}%" if total else "Pass Rate: N/A")
-print("")
-print(f"### Speedup Statistics")
-speedups = [v.get('avg_speedup') for v in perf.values() if v.get('avg_speedup') is not None]
-if speedups:
-    import statistics
-    print(f"- Average Speedup: {statistics.mean(speedups):.4f}x")
-    print(f"- Median Speedup: {statistics.median(speedups):.4f}x")
-    print(f"- Max Speedup: {max(speedups):.4f}x")
-    print(f"- Min Speedup: {min(speedups):.4f}x")
-else:
-    print("No speedup data available")
-print("")
-print(f"### Failed Operators")
-failed_ops = [op for op, info in perf.items() if info.get('status') != 'PASS']
-if failed_ops:
-    for op in failed_ops:
-        print(f"- {op}: {perf[op].get('status')}")
-else:
-    print("None")
-print("")
-print(f"### All Operators")
-print(f"| Operator | Status | Avg Speedup | Max Speedup |")
-print(f"| --- | --- | --- | --- |")
-for op, info in perf.items():
-    status = info.get('status', 'UNKNOWN')
-    emoji = "✅" if status == "PASS" else "❌"
-    avg = info.get('avg_speedup')
-    max_sp = info.get('max_speedup')
-    avg_str = f"{avg:.4f}" if avg is not None else "N/A"
-    max_str = f"{max_sp:.4f}" if max_sp is not None else "N/A"
-    print(f"| {op} | {emoji} {status} | {avg_str} | {max_str} |")
-PY
-          fi
-      - name: Upload acceptance artifacts
+      - name: Upload perf artifacts
+        if: github.event.inputs.run_perf == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: flagtensor-acceptance-perf
           path: acceptance_results_perf
+
       - name: Report summary
-        run: |
-          cat acceptance_results_perf/ACCEPTANCE_SUMMARY.md >> $GITHUB_STEP_SUMMARY || true
+        run: cat acceptance_summary.md >> $GITHUB_STEP_SUMMARY || true

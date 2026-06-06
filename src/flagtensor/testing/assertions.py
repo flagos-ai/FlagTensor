@@ -7,11 +7,26 @@ from typing import Tuple
 import torch
 
 DEFAULT_CORRECTNESS_TOLERANCES: Dict[torch.dtype, Tuple[float, float]] = {
+    # Integer types — must be bit-exact
+    torch.bool: (0, 0),
+    torch.uint8: (0, 0),
+    torch.int8: (0, 0),
+    torch.int16: (0, 0),
+    torch.int32: (0, 0),
+    torch.int64: (0, 0),
+    # FP8 types — very low precision
+    torch.float8_e4m3fn: (1e-3, 1e-3),
+    torch.float8_e5m2: (1e-3, 1e-3),
+    torch.float8_e4m3fnuz: (1e-3, 1e-3),
+    torch.float8_e5m2fnuz: (1e-3, 1e-3),
+    # Floating-point types — per operator-library spec
     torch.float16: (1e-3, 1e-3),
-    torch.bfloat16: (2e-2, 2e-2),
-    torch.float32: (1e-5, 1e-5),
+    torch.float32: (1.3e-6, 1.3e-6),
+    torch.bfloat16: (0.016, 0.016),
     torch.float64: (1e-7, 1e-7),
-    torch.complex64: (1e-5, 1e-5),
+    # Complex types
+    torch.complex32: (1e-3, 1e-3),
+    torch.complex64: (1.3e-6, 1.3e-6),
     torch.complex128: (1e-7, 1e-7),
 }
 
@@ -29,7 +44,7 @@ def get_tolerance(
     Returns:
         Tuple of (atol, rtol) for the given dtype.
     """
-    default_atol, default_rtol = DEFAULT_CORRECTNESS_TOLERANCES.get(dtype, (1e-5, 1e-5))
+    default_atol, default_rtol = DEFAULT_CORRECTNESS_TOLERANCES.get(dtype, (1.3e-6, 1.3e-6))
     return (default_atol if atol is None else atol, default_rtol if rtol is None else rtol)
 
 
@@ -39,6 +54,7 @@ def assert_close(
     dtype: Optional[torch.dtype] = None,
     atol: Optional[float] = None,
     rtol: Optional[float] = None,
+    equal_nan: bool = False,
 ):
     """Assert that two tensors are close within dtype-specific tolerances.
 
@@ -48,13 +64,14 @@ def assert_close(
         dtype: The dtype to use for tolerance lookup. Uses actual.dtype if None.
         atol: Override for absolute tolerance.
         rtol: Override for relative tolerance.
+        equal_nan: If True, two NaN values are considered equal.
     """
     resolved_dtype = dtype or actual.dtype
     resolved_atol, resolved_rtol = get_tolerance(resolved_dtype, atol=atol, rtol=rtol)
-    assert torch.allclose(actual, expected, atol=resolved_atol, rtol=resolved_rtol)
+    torch.testing.assert_close(actual, expected, atol=resolved_atol, rtol=resolved_rtol, equal_nan=equal_nan)
 
 
-def assert_equal(actual: torch.Tensor, expected: torch.Tensor):
+def assert_equal(actual: torch.Tensor, expected: torch.Tensor, equal_nan: bool = False):
     """Assert that two tensors are exactly equal.
 
     Use for bit-exact operations or integer dtypes.
@@ -62,5 +79,13 @@ def assert_equal(actual: torch.Tensor, expected: torch.Tensor):
     Args:
         actual: The actual tensor.
         expected: The expected tensor.
+        equal_nan: If True, two NaN values are considered equal.
     """
-    assert torch.equal(actual, expected)
+    if equal_nan:
+        assert actual.shape == expected.shape, f"Shape mismatch: {actual.shape} vs {expected.shape}"
+        nan_mask = torch.isnan(actual) & torch.isnan(expected)
+        actual_clean = torch.where(nan_mask, torch.zeros_like(actual), actual)
+        expected_clean = torch.where(nan_mask, torch.zeros_like(expected), expected)
+        assert torch.equal(actual_clean, expected_clean), "Tensors differ outside NaN positions"
+    else:
+        assert torch.equal(actual, expected), "Tensors are not equal"

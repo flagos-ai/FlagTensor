@@ -5,53 +5,69 @@ on:
     - cron: "0 2 * * 0"
   workflow_dispatch:
     inputs:
-      op_list:
-        description: "Path to operator list file (optional, generated from registry if empty)"
+      category:
+        description: "Operator categories (unary,binary,contraction,sparse)"
         required: false
-        default: ""
+        default: "unary,binary,contraction,sparse"
       gpus:
-        description: "GPU ids passed to weekly runner"
+        description: "GPU ids"
         required: false
-        default: "0"
-      mode:
-        description: "Benchmark mode passed to weekly benchmark runs"
+        default: "0,1"
+      run_perf:
+        description: "Run performance tests (true/false)"
         required: false
-        default: "kernel"
+        default: "true"
 
 jobs:
-  full-ci:
-    runs-on: h20
+  weekly:
+    runs-on: [self-hosted, a100]
     steps:
       - uses: actions/checkout@v4
-      - name: Install package
-        run: |
-          export PATH=$HOME/.pyenv/bin:$PATH
-          eval $(pyenv init - bash)
-          uv venv
-          source .venv/bin/activate
-          uv pip install -e .
-      - name: Prepare weekly operator list
-        run: |
-          python - <<'PY'
-import sys
-sys.path.insert(0, 'src')
-from pathlib import Path
-from flagtensor_registry import load_operator_registry
 
-ops = [
-    spec.name for spec in load_operator_registry()
-    if spec.is_active and not spec.is_blocked
-]
-Path('ci_weekly_ops.txt').write_text('\n'.join(ops) + '\n', encoding='utf-8')
-PY
-      - name: Run weekly runner
+      - name: Verify GPU
+        run: nvidia-smi
+
+      - name: Install cutensor
         run: |
-          python tools/run_flagtensor_weekly.py --project-root . --op-list ci_weekly_ops.txt --gpus "${{ github.event.inputs.gpus || '0' }}" --mode "${{ github.event.inputs.mode || 'kernel' }}" --results-dir weekly_results_ci
+          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12
+          ln -sf $(python3 -c "import cutensor; print(cutensor.__path__[0])")/lib/libcutensor.so.2 /usr/lib/x86_64-linux-gnu/libcutensor.so
+
+      - name: Install flagtree
+        run: |
+          python3 -m pip install --no-cache-dir \
+            --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
+            --trusted-host=resource.flagos.net \
+            "flagtree==0.4.0+3.3" --no-deps
+
+      - name: Install deps
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple "cuda-bindings>=12.9.6,<13" nvmath-python matplotlib setuptools PyYAML
+
+      - name: Install flagtensor
+        run: python3 -m pip install -e .
+
+      - name: Run full correctness
+        run: |
+          python3 tools/run_tests.py \
+            --category "${{ github.event.inputs.category || 'unary,binary,contraction,sparse' }}" \
+            --gpus "${{ github.event.inputs.gpus || '0,1' }}" \
+            --results-dir weekly_results_correctness
+
+      - name: Run full performance
+        if: github.event.inputs.run_perf == 'true'
+        run: |
+          python3 tools/run_tests.py \
+            --run-perf \
+            --category "${{ github.event.inputs.category || 'unary,binary,contraction,sparse' }}" \
+            --gpus "${{ github.event.inputs.gpus || '0,1' }}" \
+            --results-dir weekly_results_perf
+
       - name: Upload weekly artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flagtensor-weekly-results
           path: |
-            ci_weekly_ops.txt
-            weekly_results_ci
+            weekly_results_correctness
+            weekly_results_perf
             pyproject.toml

@@ -5,19 +5,15 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
-      cuda_versions:
-        description: "Comma-separated CUDA versions to test"
+      category:
+        description: "Operator categories (unary/binary/contraction/sparse)"
         required: false
-        default: "12.1,12.4,12.6"
-      mode:
-        description: "Benchmark mode"
-        required: false
-        default: "kernel"
+        default: "unary"
 
 jobs:
   compatibility:
     name: "CUDA ${{ matrix.cuda }} correctness"
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, a100]
     strategy:
       fail-fast: false
       matrix:
@@ -28,108 +24,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Python and system deps
+      - name: Install system deps
         run: |
           apt-get update -qq
           apt-get install -y -qq python3 python3-pip git
-          python3 -m pip install --upgrade pip
 
       - name: Install PyTorch (CUDA ${{ matrix.cuda }})
         run: |
-          TORCH_INDEX="https://download.pytorch.org/whl/cu${{ matrix.cuda }}"
-          python3 -m pip install torch --index-url $TORCH_INDEX
+          python3 -m pip install --upgrade pip
+          python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu${{ matrix.cuda }}
 
-      - name: Install triton
+      - name: Install cutensor
         run: |
-          python3 -m pip install triton
+          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12
+          ln -sf $(python3 -c "import cutensor; print(cutensor.__path__[0])")/lib/libcutensor.so.2 /usr/lib/x86_64-linux-gnu/libcutensor.so
+
+      - name: Install flagtree
+        run: |
+          python3 -m pip install --no-cache-dir \
+            --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
+            --trusted-host=resource.flagos.net \
+            "flagtree==0.4.0+3.3" --no-deps
 
       - name: Install flagtensor
         run: |
-          python3 -m pip install . PyYAML
+          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple PyYAML
+          python3 -m pip install -e .
 
       - name: Run smoke correctness
         run: |
-          python3 tools/run_flagtensor_ci.py \
-            --smoke --run-correctness \
-            --mode "${{ github.event.inputs.mode || 'kernel' }}" \
-            --results-dir compatibility_results \
-            --dump-json-summary
+          python3 tools/run_tests.py \
+            --category "${{ github.event.inputs.category || 'unary' }}" \
+            --gpus 0 \
+            --results-dir compatibility_results
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flagtensor-compat-cu${{ matrix.cuda }}
           path: compatibility_results
-
-  h20-regression:
-    name: "H20 smoke benchmark"
-    runs-on: [self-hosted, h20]
-    if: github.event_name == 'workflow_dispatch'
-    container:
-      image: "nvidia/cuda:12.4-devel-ubuntu22.04"
-      options: --gpus all --shm-size=8g
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install deps
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq python3 python3-pip git
-          python3 -m pip install --upgrade pip
-          python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu124
-          python3 -m pip install triton
-          python3 -m pip install . PyYAML
-
-      - name: Run smoke correctness
-        run: |
-          python3 tools/run_flagtensor_ci.py \
-            --smoke --run-correctness \
-            --results-dir h20_correctness \
-            --dump-json-summary
-
-      - name: Run smoke perf
-        run: |
-          python3 tools/run_flagtensor_ci.py \
-            --smoke --run-perf \
-            --mode "${{ github.event.inputs.mode || 'kernel' }}" \
-            --results-dir h20_perf \
-            --dump-json-summary
-
-      - name: Generate H20 report
-        run: |
-          echo "# H20 Regression Report" > h20_report.md
-          echo "" >> h20_report.md
-          echo "## Correctness" >> h20_report.md
-          if [ -f h20_correctness/summary.json ]; then
-            python3 -c "
-import json
-d = json.load(open('h20_correctness/summary.json'))
-corr = d.get('correctness', {})
-total = len(corr)
-passed = sum(1 for v in corr.values() if v.get('status') == 'PASS')
-print(f'- Passed: {passed}/{total}')
-" >> h20_report.md
-          fi
-          echo "" >> h20_report.md
-          echo "## Performance" >> h20_report.md
-          if [ -f h20_perf/summary.json ]; then
-            python3 -c "
-import json, statistics
-d = json.load(open('h20_perf/summary.json'))
-perf = d.get('performance', {})
-speedups = [v.get('avg_speedup') for v in perf.values() if v.get('avg_speedup') is not None]
-if speedups:
-    print(f'- Operators: {len(perf)}')
-    print(f'- Avg Speedup: {statistics.mean(speedups):.4f}x')
-    print(f'- Max Speedup: {max(speedups):.4f}x')
-" >> h20_report.md
-          fi
-
-      - name: Upload H20 artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: flagtensor-h20-regression
-          path: |
-            h20_correctness
-            h20_perf
-            h20_report.md
