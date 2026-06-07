@@ -20,6 +20,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Computes the absolute value of each element in input.
 - name: acos
   category: unary
   python_api: flagtensor.acos
@@ -43,6 +44,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the arccosine (in radians) of each element in input.
 - name: acosh
   category: unary
   python_api: flagtensor.acosh
@@ -64,6 +66,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the inverse hyperbolic cosine of each element in input.
 - name: add
   category: binary
   python_api: flagtensor.add
@@ -85,6 +88,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Adds other, scaled by alpha, to input element-wise.
 - name: asin
   category: unary
   python_api: flagtensor.asin
@@ -106,6 +110,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the arcsine (in radians) of each element in input.
 - name: asinh
   category: unary
   python_api: flagtensor.asinh
@@ -127,6 +132,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the inverse hyperbolic sine of each element in input.
 - name: atan
   category: unary
   python_api: flagtensor.atan
@@ -148,6 +154,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the arctangent of the elements (in radians) in input.
 - name: atanh
   category: unary
   python_api: flagtensor.atanh
@@ -169,6 +176,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the inverse hyperbolic tangent of each element in input.
 - name: block_sparse_tensor_contraction
   category: sparse
   python_api: flagtensor.block_sparse_tensor_contraction
@@ -190,6 +198,7 @@ operators:
   - Sparse
   stages:
   - experimental: '0.1'
+  description: Performs block-sparse tensor contraction via cuTensor.
 - name: ceil
   category: unary
   python_api: flagtensor.ceil
@@ -211,6 +220,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the ceil of the elements of input.
 - name: conj
   category: unary
   python_api: flagtensor.conj
@@ -232,6 +242,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Computes the element-wise conjugate of the given input tensor.
 - name: cos
   category: unary
   python_api: flagtensor.cos
@@ -253,6 +264,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the cosine of the elements of input given in radians.
 - name: cosh
   category: unary
   python_api: flagtensor.cosh
@@ -274,6 +286,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the hyperbolic cosine of the elements of input.
 - name: exp
   category: unary
   python_api: flagtensor.exp
@@ -295,6 +308,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the exponential of the elements of input.
 - name: floor
   category: unary
   python_api: flagtensor.floor
@@ -316,6 +330,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the floor of the elements of input.
 - name: gett
   category: contraction
   python_api: flagtensor.gett
@@ -338,6 +353,7 @@ operators:
   - BLAS
   stages:
   - stable: '1.0'
+  description: 'General tensor contraction: a summation over pairs of indices.'
 - name: identity
   category: unary
   python_api: flagtensor.identity
@@ -359,6 +375,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns the input tensor unchanged (passthrough or copy).
 - name: log
   category: unary
   python_api: flagtensor.log
@@ -380,6 +397,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the natural logarithm of the elements of input.
 - name: max
   category: binary
   python_api: flagtensor.max
@@ -401,6 +419,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Computes the element-wise maximum of input and other.
 - name: min
   category: binary
   python_api: flagtensor.min
@@ -422,6 +441,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Computes the element-wise minimum of input and other.
 - name: mish
   category: unary
   python_api: flagtensor.mish
@@ -443,6 +463,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: 'Applies the Mish activation function element-wise: x * tanh(softplus(x)).'
 - name: mul
   category: binary
   python_api: flagtensor.mul
@@ -464,6 +485,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Multiplies input by other element-wise.
 - name: neg
   category: unary
   python_api: flagtensor.neg
@@ -485,6 +507,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the negative of the elements of input.
 - name: rcp
   category: unary
   python_api: flagtensor.rcp
@@ -506,6 +529,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Computes the reciprocal (1/x) of each element of input.
 - name: relu
   category: unary
   python_api: flagtensor.relu
@@ -527,6 +551,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Applies the Rectified Linear Unit function element-wise.
 - name: sigmoid
   category: unary
   python_api: flagtensor.sigmoid
@@ -548,6 +573,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: 'Applies the Sigmoid function element-wise: 1 / (1 + exp(-x)).'
 - name: sin
   category: unary
   python_api: flagtensor.sin
@@ -569,6 +595,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the sine of the elements of input given in radians.
 - name: sinh
   category: unary
   python_api: flagtensor.sinh
@@ -590,6 +617,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the hyperbolic sine of the elements of input.
 - name: soft_plus
   category: unary
   python_api: flagtensor.soft_plus
@@ -611,6 +639,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: 'Applies the Softplus function element-wise: log(1 + exp(x)).'
 - name: soft_sign
   category: unary
   python_api: flagtensor.soft_sign
@@ -632,6 +661,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: 'Applies the Softsign function element-wise: x / (1 + abs(x)).'
 - name: sqrt
   category: unary
   python_api: flagtensor.sqrt
@@ -653,6 +683,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the square root of the elements of input.
 - name: swish
   category: unary
   python_api: flagtensor.swish
@@ -674,6 +705,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: 'Applies the Swish (SiLU) activation function: x * sigmoid(x).'
 - name: tan
   category: unary
   python_api: flagtensor.tan
@@ -695,6 +727,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the tangent of the elements of input given in radians.
 - name: tanh
   category: unary
   python_api: flagtensor.tanh
@@ -716,6 +749,7 @@ operators:
   - Math
   stages:
   - stable: '1.0'
+  description: Returns a new tensor with the hyperbolic tangent of the elements of input.
 - name: tensor_contraction_trinary
   category: contraction
   python_api: flagtensor.tensor_contraction_trinary
@@ -738,6 +772,7 @@ operators:
   - BLAS
   stages:
   - active: '0.1'
+  description: Three-input tensor contraction with element-wise trinary reduction.
 - name: tgett
   category: contraction
   python_api: flagtensor.tgett
@@ -760,6 +795,7 @@ operators:
   - BLAS
   stages:
   - stable: '1.0'
+  description: Tensor contraction with the first operand transposed.
 - name: trinary_generic
   category: contraction
   python_api: flagtensor.trinary
@@ -781,6 +817,7 @@ operators:
   - BLAS
   stages:
   - stable: '1.0'
+  description: Generic element-wise trinary operator with optional unary transforms.
 - name: ttgt
   category: contraction
   python_api: flagtensor.ttgt
@@ -803,3 +840,4 @@ operators:
   - BLAS
   stages:
   - stable: '1.0'
+  description: Tensor contraction with both operands transposed.

@@ -1,3 +1,5 @@
+"""FlagTensor runtime — device detection, config loading, backend abstraction."""
+
 from . import backend
 from .backend.device import DeviceDetector
 from .configloader import ConfigLoader
@@ -33,12 +35,12 @@ def replace_customized_ops(_globals):
 
 
 __all__ = [
-    'backend',
-    'config_loader',
-    'device',
-    'torch_device_fn',
-    'torch_backend_device',
-    'get_tuned_config',
-    'get_heuristic_config',
-    'replace_customized_ops',
+    "backend",
+    "config_loader",
+    "device",
+    "torch_device_fn",
+    "torch_backend_device",
+    "get_tuned_config",
+    "get_heuristic_config",
+    "replace_customized_ops",
 ]

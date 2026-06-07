@@ -1,3 +1,7 @@
+"""Backend abstraction — vendor modules, device detection, arch specialization.
+
+Following FlagGems runtime/backend/__init__.py pattern.
+"""
 import importlib
 import inspect
 import os
@@ -5,15 +9,45 @@ import sys
 from pathlib import Path
 
 from . import backend_utils
+from ..common import vendors
 
-vendor_module = None
-device_name = None
-torch_device_object = None
-torch_device_fn_device = None
-ops_module = None
-heuristic_config_module = None
-vendor_extra_lib_imported = False
-customized_ops = None
+# ---------------------------------------------------------------------------
+# BackendState — singleton holding cached vendor/device state
+# ---------------------------------------------------------------------------
+
+
+class BackendState:
+    """Singleton managing backend state variables."""
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        self.vendor_module = None
+        self.device_name = None
+        self.torch_device_object = None
+        self.torch_device_fn_device = None
+        self.tl_extra_backend_module = None
+        self.ops_module = None
+        self.fused_module = None
+        self.heuristic_config_module = None
+        self.vendor_extra_lib_imported = False
+        self.customized_ops = None
+
+
+_state = BackendState()
+
+# ---------------------------------------------------------------------------
+# BackendArchEvent — GPU architecture specialization (ampere/hopper/blackwell)
+# ---------------------------------------------------------------------------
 
 
 class BackendArchEvent:
@@ -52,27 +86,28 @@ class BackendArchEvent:
             heuristic_module = self.arch_module
         except Exception:
             sys.path.insert(0, str(self.current_arch_path))
-            heuristic_module = importlib.import_module('heuristics_config_utils')
+            heuristic_module = importlib.import_module("heuristics_config_utils")
             sys.path.remove(str(self.current_arch_path))
-        if hasattr(heuristic_module, 'HEURISTICS_CONFIGS'):
+        if hasattr(heuristic_module, "HEURISTICS_CONFIGS"):
             return heuristic_module.HEURISTICS_CONFIGS
         return None
 
     def get_autotune_configs(self):
-        path = self.current_arch_path
-        return backend_utils.get_tune_config(file_path=path)
+        return backend_utils.get_tune_config(file_path=self.current_arch_path)
 
     def get_arch(self, device=0):
-        if not hasattr(vendor_module, 'ARCH_MAP'):
+        if not hasattr(_state.vendor_module, "ARCH_MAP"):
             return
-        arch_map = vendor_module.ARCH_MAP
-        arch_string = os.environ.get('ARCH', '')
-        arch_string_num = arch_string.split('_')[-1][0] if arch_string else arch_string
+        arch_map = _state.vendor_module.ARCH_MAP
+        arch_string = os.environ.get("ARCH", "")
+        arch_string_num = (
+            arch_string.split("_")[-1][0] if arch_string else arch_string
+        )
         if not arch_string_num:
             try:
-                if not torch_device_object.is_available():
+                if not _state.torch_device_object.is_available():
                     return False
-                props = torch_device_object.get_device_properties(device)
+                props = _state.torch_device_object.get_device_properties(device)
                 arch_string_num = str(props.major)
             except Exception:
                 self.has_arch = False
@@ -82,16 +117,15 @@ class BackendArchEvent:
         return None
 
     def _get_supported_archs(self, path=None):
-        path = path or vendor_module.__path__[0]
-        excluded = ('ops', 'fused')
+        path = path or _state.vendor_module.__path__[0]
+        excluded = ("ops", "fused")
         path = Path(path)
         path = path.parent if path.is_file() else path
-        archs = {}
-        for p in path.iterdir():
-            name = str(p).split('/')[-1]
-            if p.is_dir() and name not in excluded and not name.startswith('_'):
-                archs.update({name: str(p)})
-        return archs
+        return {
+            p.name: str(p)
+            for p in path.iterdir()
+            if p.is_dir() and p.name not in excluded and not p.name.startswith("_")
+        }
 
     def get_arch_module(self):
         path_dir = os.path.dirname(self.current_arch_path)
@@ -104,12 +138,11 @@ class BackendArchEvent:
         arch_specialized_ops = []
         modules = []
         try:
-            ops_module = self.arch_module.ops
-            modules.append(ops_module)
+            modules.append(self.arch_module.ops)
         except Exception:
             try:
                 sys.path.append(self.current_arch_path)
-                ops_module = importlib.import_module(f'{self.arch}.ops')
+                ops_module = importlib.import_module(f"{self.arch}.ops")
                 modules.append(ops_module)
             except Exception as err_msg:
                 self.error_msgs.append(err_msg)
@@ -118,98 +151,120 @@ class BackendArchEvent:
         return arch_specialized_ops
 
 
-def import_vendor_extra_lib(vendor_name=None):
-    global vendor_extra_lib_imported
-    if vendor_extra_lib_imported is True:
-        return
-    global ops_module
-    try:
-        ops_module = importlib.import_module(f'_{vendor_name}.ops')
-    except ModuleNotFoundError:
-        ops_module = None
-    vendor_extra_lib_imported = True
-
-
-def set_torch_backend_device_fn(vendor_name=None):
-    global device_name, torch_device_fn_device
-    device_name = device_name or get_vendor_info(vendor_name).device_name
-    module_str = f'torch.backends.{device_name}'
-    torch_device_fn_device = importlib.import_module(module_str)
-
-
-def get_torch_backend_device_fn():
-    return torch_device_fn_device
-
-
-def gen_torch_device_object(vendor_name=None):
-    global device_name, torch_device_object
-    if torch_device_object is not None:
-        return torch_device_object
-    device_name = device_name or get_vendor_info(vendor_name).device_name
-    namespace = {}
-    code = f"""
-import torch
-fn = torch.{device_name}
-"""
-    exec(code, namespace)
-    torch_device_object = namespace['fn']
-    return torch_device_object
+# ---------------------------------------------------------------------------
+# Vendor module helpers
+# ---------------------------------------------------------------------------
 
 
 def get_vendor_module(vendor_name, query=False):
-    def get_module(vendor_name):
-        current_file_path = os.path.abspath(__file__)
-        current_dir_path = os.path.dirname(current_file_path)
-        sys.path.append(current_dir_path)
-        return importlib.import_module(vendor_name)
+    def load(name):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        vendor_dir = os.path.join(current_dir, name)
+        if not os.path.isdir(vendor_dir):
+            raise ModuleNotFoundError(f"No vendor module: {name}")
+        sys.path.append(current_dir)
+        try:
+            return importlib.import_module(name)
+        finally:
+            sys.path.remove(current_dir)
 
     if query:
-        return get_module(vendor_name)
+        return load(vendor_name)
 
-    global vendor_module
-    if vendor_module is None:
-        vendor_module = get_module('_' + vendor_name)
-    return vendor_module
+    if _state.vendor_module is None:
+        _state.vendor_module = load("_" + vendor_name)
+    return _state.vendor_module
 
 
 def get_vendor_info(vendor_name=None, query=False):
     if query:
-        return get_vendor_module(vendor_name, query).vendor_info
-    global vendor_module
-    get_vendor_module(vendor_name)
-    return vendor_module.vendor_info
+        try:
+            return get_vendor_module(vendor_name, query).vendor_info
+        except ModuleNotFoundError:
+            return None
+    try:
+        get_vendor_module(vendor_name)
+    except ModuleNotFoundError:
+        # Fallback to nvidia for unknown vendor
+        get_vendor_module("nvidia")
+    return _state.vendor_module.vendor_info
+
+
+def get_vendor_infos():
+    """Return all available vendor_info objects by scanning backend/ directory."""
+    infos = []
+    for vendor_name in vendors.get_all_vendors():
+        try:
+            infos.append(get_vendor_info(f"_{vendor_name}", query=True))
+        except Exception:
+            continue
+    return infos
+
+
+def import_vendor_extra_lib(vendor_name=None):
+    if _state.vendor_extra_lib_imported:
+        return
+    try:
+        _state.ops_module = importlib.import_module(f"_{vendor_name}.ops")
+    except ModuleNotFoundError:
+        _state.ops_module = None
+    _state.vendor_extra_lib_imported = True
+
+
+def set_torch_backend_device_fn(vendor_name=None):
+    _state.device_name = _state.device_name or get_vendor_info(vendor_name).device_name
+    module_str = f"torch.backends.{_state.device_name}"
+    _state.torch_device_fn_device = importlib.import_module(module_str)
+
+
+def get_torch_backend_device_fn():
+    return _state.torch_device_fn_device
+
+
+def gen_torch_device_object(vendor_name=None):
+    if _state.torch_device_object is not None:
+        return _state.torch_device_object
+    _state.device_name = _state.device_name or get_vendor_info(vendor_name).device_name
+    namespace = {}
+    exec(f"import torch\nfn = torch.{_state.device_name}", namespace)
+    _state.torch_device_object = namespace["fn"]
+    return _state.torch_device_object
 
 
 def get_current_device_extend_op(vendor_name=None):
     import_vendor_extra_lib(vendor_name)
-    global customized_ops
-    if customized_ops is not None:
-        return customized_ops
-    customized_ops = []
-    if ops_module is not None:
-        customized_ops += inspect.getmembers(ops_module, inspect.isfunction)
-    return customized_ops
+    if _state.customized_ops is not None:
+        return _state.customized_ops
+    _state.customized_ops = []
+    if _state.ops_module is not None:
+        _state.customized_ops.extend(
+            inspect.getmembers(_state.ops_module, inspect.isfunction)
+        )
+    return _state.customized_ops
 
 
 def get_heuristic_config(vendor_name=None):
-    global heuristic_config_module
-    try:
-        heuristic_config_module = importlib.import_module(
-            f'_{vendor_name}.heuristics_config_utils'
-        )
-    except Exception:
-        heuristic_config_module = importlib.import_module(
-            '_nvidia.heuristics_config_utils'
-        )
-    if hasattr(heuristic_config_module, 'HEURISTICS_CONFIGS'):
-        return heuristic_config_module.HEURISTICS_CONFIGS
+    if _state.heuristic_config_module is None:
+        try:
+            _state.heuristic_config_module = importlib.import_module(
+                f"_{vendor_name}.heuristics_config_utils"
+            )
+        except Exception:
+            _state.heuristic_config_module = importlib.import_module(
+                "_nvidia.heuristics_config_utils"
+            )
+    if hasattr(_state.heuristic_config_module, "HEURISTICS_CONFIGS"):
+        return _state.heuristic_config_module.HEURISTICS_CONFIGS
     return None
 
 
 def get_tune_config(vendor_name=None):
-    global vendor_module
     get_vendor_module(vendor_name)
     return backend_utils.get_tune_config(vendor_name)
 
 
-__all__ = ['*']
+def get_backend_state():
+    return _state
+
+
+__all__ = ["*"]

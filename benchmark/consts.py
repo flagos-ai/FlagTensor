@@ -3,9 +3,9 @@
 Provides shared dtype lists, shape definitions, and benchmark configuration
 following the FlagGems benchmark/consts.py pattern.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -136,4 +136,46 @@ class BenchmarkResult:
             "level": self.level,
             "avg_speedup": self.avg_speedup,
             "details": [m.to_dict() for m in self.result],
+        }
+
+
+# ---------------------------------------------------------------------------
+# All available metric names (derived from BenchmarkMetrics fields)
+# ---------------------------------------------------------------------------
+ALL_AVAILABLE_METRICS = set(f.name for f in fields(BenchmarkMetrics)) - {
+    "shape", "error_msg", "dtype",
+}
+
+
+def check_metric_dependencies(requested: List[str]) -> List[str]:
+    """Ensure requested metrics are valid; return sorted deduped list."""
+    valid = [m for m in requested if m in ALL_AVAILABLE_METRICS]
+    return sorted(set(valid))
+
+
+# ---------------------------------------------------------------------------
+# Shape helpers
+# ---------------------------------------------------------------------------
+def get_recommended_shapes(
+    op_name: str, user_shapes: Optional[List] = None
+) -> Optional[List]:
+    """Return recommended core shapes for an operator, or user-provided shapes."""
+    if user_shapes:
+        return user_shapes
+    return None  # use DEFAULT_SHAPES
+
+
+@dataclass
+class OperationAttribute:
+    """Metadata about an operator's benchmark configuration."""
+
+    op_name: str = ""
+    recommended_core_shapes: Optional[List] = None
+    shape_desc: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "op_name": self.op_name,
+            "recommended_core_shapes": self.recommended_core_shapes,
+            "shape_desc": self.shape_desc,
         }

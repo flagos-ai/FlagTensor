@@ -9,8 +9,8 @@ description = "Triton operators benchmarked against cuTensor baselines"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "torch>=2.2.0",
-    "triton>=3.3.0",
+    "torch>=2.2.0,<2.7.0",
+    "triton>=3.3.0,<3.8.0",
     "pytest>=7.1.0",
     "matplotlib>=3.7.0",
     "openpyxl>=3.1.0",
@@ -33,6 +33,11 @@ line_length = 120
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests", "benchmark"]
+filterwarnings = [
+    "ignore::pytest.PytestUnknownMarkWarning",
+    "ignore::DeprecationWarning",
+    "ignore:Warning only once for all operators:UserWarning",
+]
 markers = [
     "abs: operator marker",
     "acos: operator marker",
