@@ -1,6 +1,18 @@
 import torch
 
-DEFAULT_BENCHMARK_DTYPES = [torch.float16, torch.float32]
+from flagtensor.runtime.dtype_capability import dtype_capability
+
+# Default dtypes for benchmarking — float types only, no FP8.
+# FP8 is excluded because A100 (Ampere) does not support FP8 kernel operations
+# (torch.randn for float8_e5m2 raises RuntimeError).
+_FP8_DTYPES = {torch.float8_e4m3fn, torch.float8_e5m2, torch.float8_e4m3fnuz, torch.float8_e5m2fnuz}
+DEFAULT_BENCHMARK_DTYPES = [
+    d for d in dtype_capability.supported_dtypes
+    if d.is_floating_point and d not in _FP8_DTYPES
+]
+# Default dtypes for correctness testing (inference path).
+# FP8 / INT8 are excluded because torch.randn / torch.randint don't support them
+# and each op that does support them declares its own dtype set.
 DEFAULT_CORRECTNESS_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 # ── Elementwise benchmark shapes: 1D pow2 + multi-dimensional ─────────────
 _ELEMENTWISE_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)] + [
