@@ -1,73 +1,38 @@
-name: flagtensor-weekly
+name: FlagTensor Weekly
 
 on:
   schedule:
-    - cron: "0 2 * * 0"
+    - cron: "0 2 * * 0"   # every Sunday 02:00 UTC
   workflow_dispatch:
     inputs:
-      category:
-        description: "Operator categories (unary,binary,contraction,sparse)"
+      ops:
+        description: "Operator names (empty = all stable)"
         required: false
-        default: "unary,binary,contraction,sparse"
+        default: ""
       gpus:
-        description: "GPU ids"
+        description: "GPU IDs"
         required: false
         default: "0,1"
-      run_perf:
-        description: "Run performance tests (true/false)"
-        required: false
-        default: "true"
+
+permissions:
+  contents: read
 
 jobs:
   weekly:
-    runs-on: [self-hosted, a100]
+    runs-on: [self-hosted, linux, x86_64, nvidia, a100]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Verify GPU
-        run: nvidia-smi
-
-      - name: Install cutensor
-        run: |
-          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12
-          ln -sf $(python3 -c "import cutensor; print(cutensor.__path__[0])")/lib/libcutensor.so.2 /usr/lib/x86_64-linux-gnu/libcutensor.so
-
-      - name: Install flagtree
-        run: |
-          python3 -m pip install --no-cache-dir \
-            --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
-            --trusted-host=resource.flagos.net \
-            "flagtree==0.4.0+3.3" --no-deps
-
-      - name: Install deps
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple "cuda-bindings>=12.9.6,<13" nvmath-python matplotlib setuptools PyYAML
-
-      - name: Install flagtensor
-        run: python3 -m pip install -e .
-
-      - name: Run full correctness
+      - name: Setup
+        run: bash setup.sh
+      - name: Full test
         run: |
           python3 tools/run_tests.py \
-            --category "${{ github.event.inputs.category || 'unary,binary,contraction,sparse' }}" \
+            --stages stable \
+            --ops "${{ github.event.inputs.ops || '' }}" \
             --gpus "${{ github.event.inputs.gpus || '0,1' }}" \
-            --results-dir weekly_results_correctness
-
-      - name: Run full performance
-        if: github.event.inputs.run_perf == 'true'
-        run: |
-          python3 tools/run_tests.py \
-            --run-perf \
-            --category "${{ github.event.inputs.category || 'unary,binary,contraction,sparse' }}" \
-            --gpus "${{ github.event.inputs.gpus || '0,1' }}" \
-            --results-dir weekly_results_perf
-
-      - name: Upload weekly artifacts
+            --output-dir results
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flagtensor-weekly-results
-          path: |
-            weekly_results_correctness
-            weekly_results_perf
-            pyproject.toml
+          path: results/

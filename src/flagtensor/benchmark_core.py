@@ -125,9 +125,21 @@ class Benchmark:
         return args[0]
 
     def verify(self, reference: torch.Tensor, test: torch.Tensor, dtype: torch.dtype):
+        """Verify correctness between reference and test tensors.
+
+        Uses relaxed tolerances compared to accuracy tests: benchmark verification
+        only needs to catch major errors, not ulp-level differences caused by
+        Tensor Core rounding differences across GPU architectures.
+        Accuracy correctness is validated separately by per-operator tests.
+        """
         from flagtensor.testing.assertions import get_tolerance as _get_tol
 
         atol, rtol = _get_tol(dtype)
+        # Relax tolerance for benchmark comparison (10x looser than accuracy tests)
+        # because different GPU archs (Ampere vs Hopper) have slightly different
+        # Tensor Core rounding behavior for contractions
+        atol = max(atol, 1e-4)
+        rtol = max(rtol, 1e-4)
         return torch.allclose(reference, test, atol=atol, rtol=rtol)
 
     def _get_op_slug(self) -> str:
@@ -366,4 +378,39 @@ class Benchmark:
                     speedup=(baseline_latency / latency) if baseline_latency else None,
                 )
                 results.append(metric)
+                # Inject into benchmark conftest recording (if running under pytest --record json)
+                _try_record_benchmark(self.op_name, asdict(metric))
         return results
+
+
+# ---------------------------------------------------------------------------
+# Bridge to benchmark/conftest.py recording system
+# ---------------------------------------------------------------------------
+def _try_record_benchmark(op_name: str, metric: dict) -> None:
+    """If benchmark/conftest.py is loaded with --record json, push metric data."""
+    import sys
+    bm = sys.modules.get("conftest")
+    if bm is None:
+        return
+    Config = getattr(bm, "Config", None)
+    if Config is None or not Config.record_json:
+        return
+    update_result = getattr(bm, "update_result", None)
+    if update_result is None:
+        return
+    # Derive short name: "CUTENSOR_OP_ABS" -> "abs"
+    short_name = op_name.replace("CUTENSOR_OP_", "").replace("_perf", "").strip("_").lower()
+    data = {
+        "dtype": metric.get("dtype", ""),
+        "result": [{
+            "shape_detail": str(metric.get("shape", ())).replace(" ", ""),
+            "latency_base": metric.get("latency_base", 0) or 0,
+            "latency": metric.get("latency", 0) or 0,
+            "speedup": metric.get("speedup", 0) or 0,
+        }],
+    }
+    update_result(short_name, data)
+
+
+# Set by benchmark/conftest.py pytest_configure for --record json
+_record_callback = None

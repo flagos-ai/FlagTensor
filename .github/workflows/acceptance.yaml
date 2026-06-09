@@ -1,119 +1,38 @@
-name: flagtensor-acceptance
+name: FlagTensor Acceptance
 
 on:
-  workflow_dispatch:
-    inputs:
-      category:
-        description: "Operator category (unary,binary,contraction/sparse, leave empty for all)"
-        required: false
-        default: ""
-      run_perf:
-        description: "Run performance tests (true/false)"
-        required: false
-        default: "false"
   schedule:
     - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      stages:
+        description: "Operator stages (stable, all)"
+        required: false
+        default: "stable"
+      gpus:
+        description: "GPU IDs"
+        required: false
+        default: "0"
+
+permissions:
+  contents: read
 
 jobs:
   acceptance:
-    runs-on: [self-hosted, a100]
+    runs-on: [self-hosted, linux, x86_64, nvidia, a100]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Verify GPU
-        run: nvidia-smi
-
-      - name: Install cutensor
-        run: |
-          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12
-          ln -sf $(python3 -c "import cutensor; print(cutensor.__path__[0])")/lib/libcutensor.so.2 /usr/lib/x86_64-linux-gnu/libcutensor.so
-
-      - name: Install flagtree
-        run: |
-          python3 -m pip install --no-cache-dir \
-            --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
-            --trusted-host=resource.flagos.net \
-            "flagtree==0.4.0+3.3" --no-deps
-
-      - name: Install deps
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple "cuda-bindings>=12.9.6,<13" nvmath-python matplotlib setuptools PyYAML
-
-      - name: Install flagtensor
-        run: python3 -m pip install -e .
-
-      - name: Run acceptance correctness
+      - name: Setup
+        run: bash setup.sh
+      - name: Acceptance test
         run: |
           python3 tools/run_tests.py \
-            --category "${{ github.event.inputs.category || 'unary,binary,contraction,sparse' }}" \
-            --gpus 0 \
-            --results-dir acceptance_results_correctness
-        continue-on-error: true
-
-      - name: Run acceptance perf
-        if: github.event.inputs.run_perf == 'true'
-        run: |
-          python3 tools/run_tests.py \
-            --run-perf \
-            --category "${{ github.event.inputs.category || 'unary,binary' }}" \
-            --gpus 0 \
-            --results-dir acceptance_results_perf
-        continue-on-error: true
-
-      - name: Generate summary
-        run: |
-          echo "# FlagTensor Acceptance Results" > acceptance_summary.md
-          echo "" >> acceptance_summary.md
-          echo "**Category:** ${{ github.event.inputs.category || 'all' }}" >> acceptance_summary.md
-          echo "" >> acceptance_summary.md
-          echo "## Correctness" >> acceptance_summary.md
-          if [ -f acceptance_results_correctness/summary.json ]; then
-            python3 - <<'PY' >> acceptance_summary.md
-          import json
-          from pathlib import Path
-          data = json.loads(Path('acceptance_results_correctness/summary.json').read_text())
-          total = len(data)
-          passed = sum(1 for v in data.values() if v.get('status') == 'PASS')
-          print(f"- Total: {total}  |  Passed: {passed}  |  Failed: {total - passed}")
-          if total > 0:
-              print(f"- Pass Rate: {passed/total*100:.1f}%")
-          failed = [(op, info.get('status')) for op, info in data.items() if info.get('status') != 'PASS']
-          if failed:
-              print("\n### Failed")
-              for op, status in failed:
-                  print(f"- {op}: {status}")
-          PY
-          else:
-            echo "No correctness results found." >> acceptance_summary.md
-          fi
-          echo "" >> acceptance_summary.md
-          echo "## Performance" >> acceptance_summary.md
-          if [ -f acceptance_results_perf/summary.json ]; then
-            python3 - <<'PY' >> acceptance_summary.md
-          import json, statistics
-          from pathlib import Path
-          data = json.loads(Path('acceptance_results_perf/summary.json').read_text())
-          total = len(data)
-          passed = sum(1 for v in data.values() if v.get('status') == 'PASS')
-          print(f"- Total: {total}  |  Passed: {passed}  |  Failed: {total - passed}")
-          PY
-          else
-            echo "No performance results found." >> acceptance_summary.md
-          fi
-
-      - name: Upload correctness artifacts
+            --stages "${{ github.event.inputs.stages || 'stable' }}" \
+            --gpus "${{ github.event.inputs.gpus || '0' }}" \
+            --output-dir results \
+            --dump-output
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: flagtensor-acceptance-correctness
-          path: acceptance_results_correctness
-
-      - name: Upload perf artifacts
-        if: github.event.inputs.run_perf == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: flagtensor-acceptance-perf
-          path: acceptance_results_perf
-
-      - name: Report summary
-        run: cat acceptance_summary.md >> $GITHUB_STEP_SUMMARY || true
+          name: flagtensor-acceptance-results
+          path: results/

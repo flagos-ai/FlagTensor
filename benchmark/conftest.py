@@ -229,7 +229,6 @@ def pytest_configure(config):
         handler = logging.FileHandler(log_file, mode="w", encoding="utf-8", delay=False)
         handler.setLevel(logging.INFO)
         handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
-        record_logger.addHandler(handler)
         record_logger.setLevel(logging.INFO)
 
 
@@ -299,7 +298,9 @@ def pytest_runtest_makereport(item, call):
     out = yield
     report = out.get_result()
     all_marks = [mark.name for mark in item.iter_markers()]
-    marks = [m for m in all_marks if m not in BUILTIN_MARKS]
+    # Exclude only builtin marks and "performance" (category marker)
+    excluded = set(BUILTIN_MARKS) | {"performance"}
+    marks = [m for m in all_marks if m not in excluded]
     report.opid = marks[0] if marks else item.nodeid
 
 
@@ -354,11 +355,8 @@ def pytest_collection_modifyitems(session, config, items):
             data["function"] = item.originalname
         data["file"] = item.location[0]
         all_marks = list(item.iter_markers())
-        op_marks = [
-            mark.name
-            for mark in all_marks
-            if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
-        ]
+        excluded = set(BUILTIN_MARKS) | set(REGISTERED_MARKS) | {"performance"}
+        op_marks = [mark.name for mark in all_marks if mark.name not in excluded]
         data["marks"] = op_marks
         report.append(data)
 

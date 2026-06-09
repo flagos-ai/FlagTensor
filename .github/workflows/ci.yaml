@@ -1,74 +1,47 @@
-name: flagtensor-ci
+name: FlagTensor CI
 
 on:
   pull_request:
   push:
-    branches: ["main", "master"]
+    branches: [main, master]
   workflow_dispatch:
     inputs:
-      category:
-        description: "Operator categories (unary,binary,contraction,sparse)"
+      ops:
+        description: "Comma-separated operator names (empty = all stable)"
         required: false
-        default: "unary,binary,contraction,sparse"
-      run_perf:
-        description: "Also run performance tests (true/false)"
+        default: ""
+      stages:
+        description: "Operator stages (stable, all)"
         required: false
-        default: "false"
+        default: "stable"
+      gpus:
+        description: "Comma-separated GPU IDs"
+        required: false
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   correctness:
-    runs-on: [self-hosted, a100]
+    runs-on: [self-hosted, linux, x86_64, nvidia, a100]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Verify GPU
-        run: nvidia-smi
-
-      - name: Install cutensor
-        run: |
-          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12
-          ln -sf $(python3 -c "import cutensor; print(cutensor.__path__[0])")/lib/libcutensor.so.2 /usr/lib/x86_64-linux-gnu/libcutensor.so
-
-      - name: Install flagtree
-        run: |
-          python3 -m pip install --no-cache-dir \
-            --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
-            --trusted-host=resource.flagos.net \
-            "flagtree==0.4.0+3.3" --no-deps
-
-      - name: Install deps
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple "cuda-bindings>=12.9.6,<13" nvmath-python matplotlib setuptools PyYAML
-
-      - name: Install flagtensor
-        run: python3 -m pip install -e .
-
-      - name: Run correctness tests
+      - name: Setup
+        run: bash setup.sh
+      - name: Correctness
         run: |
           python3 tools/run_tests.py \
-            --category "${{ github.event.inputs.category || 'unary,binary,contraction,sparse' }}" \
-            --gpus 0 \
-            --results-dir ci_results_correctness 2>&1 | tail -20
-
-      - name: Run perf tests (optional)
-        if: github.event.inputs.run_perf == 'true'
-        run: |
-          python3 tools/run_tests.py \
-            --run-perf \
-            --category "${{ github.event.inputs.category || 'unary,binary' }}" \
-            --gpus 0 \
-            --results-dir ci_results_perf 2>&1 | tail -20
-
-      - name: Upload correctness artifacts
+            --stages "${{ github.event.inputs.stages || 'stable' }}" \
+            --ops "${{ github.event.inputs.ops || '' }}" \
+            --gpus "${{ github.event.inputs.gpus || '0' }}" \
+            --output-dir results
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: flagtensor-ci-correctness
-          path: ci_results_correctness
-
-      - name: Upload perf artifacts
-        if: github.event.inputs.run_perf == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: flagtensor-ci-perf
-          path: ci_results_perf
+          name: flagtensor-ci-results
+          path: results/

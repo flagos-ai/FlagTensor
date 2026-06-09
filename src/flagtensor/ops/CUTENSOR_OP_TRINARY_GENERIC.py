@@ -1095,7 +1095,7 @@ def _trinary_generic_kernel(
     elif OP_A == 11:
         a = tl.sigmoid(a)
     elif OP_A == 12:
-        a = tl.math.tanh(a)
+        a = (tl.exp(2 * a) - 1) / (tl.exp(2 * a) + 1)
     elif OP_A == 24:
         a = tl.abs(a)
     elif OP_A == 22:
@@ -1112,7 +1112,7 @@ def _trinary_generic_kernel(
     elif OP_B == 11:
         b = tl.sigmoid(b)
     elif OP_B == 12:
-        b = tl.math.tanh(b)
+        b = (tl.exp(2 * b) - 1) / (tl.exp(2 * b) + 1)
     elif OP_B == 24:
         b = tl.abs(b)
     elif OP_B == 22:
@@ -1129,7 +1129,7 @@ def _trinary_generic_kernel(
     elif OP_C == 11:
         c = tl.sigmoid(c)
     elif OP_C == 12:
-        c = tl.math.tanh(c)
+        c = (tl.exp(2 * c) - 1) / (tl.exp(2 * c) + 1)
     elif OP_C == 24:
         c = tl.abs(c)
     elif OP_C == 22:
@@ -1273,7 +1273,7 @@ def _trinary_generic_indexed_kernel(
     elif OP_A == 11:
         a = tl.sigmoid(a)
     elif OP_A == 12:
-        a = tl.math.tanh(a)
+        a = (tl.exp(2 * a) - 1) / (tl.exp(2 * a) + 1)
     elif OP_A == 24:
         a = tl.abs(a)
     elif OP_A == 22:
@@ -1290,7 +1290,7 @@ def _trinary_generic_indexed_kernel(
     elif OP_B == 11:
         b = tl.sigmoid(b)
     elif OP_B == 12:
-        b = tl.math.tanh(b)
+        b = (tl.exp(2 * b) - 1) / (tl.exp(2 * b) + 1)
     elif OP_B == 24:
         b = tl.abs(b)
     elif OP_B == 22:
@@ -1307,7 +1307,7 @@ def _trinary_generic_indexed_kernel(
     elif OP_C == 11:
         c = tl.sigmoid(c)
     elif OP_C == 12:
-        c = tl.math.tanh(c)
+        c = (tl.exp(2 * c) - 1) / (tl.exp(2 * c) + 1)
     elif OP_C == 24:
         c = tl.abs(c)
     elif OP_C == 22:
