@@ -40,8 +40,12 @@ python3 -m pip install --upgrade pip -q && step_ok "done"
 printf "Installing cuTensor ... "
 python3 -m pip install -q cutensor-cu12 && step_ok "done"
 printf "Linking libcutensor.so ... "
-ln -sf "$(python3 -c 'import cutensor; print(cutensor.__path__[0])')/lib/libcutensor.so.2" \
-  /usr/lib/x86_64-linux-gnu/libcutensor.so && step_ok "done"
+if [ ! -f /usr/lib/x86_64-linux-gnu/libcutensor.so ]; then
+  ln -sf "$(python3 -c 'import cutensor; print(cutensor.__path__[0])')/lib/libcutensor.so.2" \
+    /usr/lib/x86_64-linux-gnu/libcutensor.so 2>/dev/null && step_ok "done" || step_ok "skipped (non-root)"
+else
+  step_ok "exists"
+fi
 
 # ---- FlagTree ----
 printf "Installing FlagTree ... "
