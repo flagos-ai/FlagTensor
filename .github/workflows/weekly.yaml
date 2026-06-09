@@ -22,16 +22,6 @@ jobs:
     runs-on: [self-hosted, linux, x86_64, nvidia, a100]
     steps:
       - uses: actions/checkout@v4
-        continue-on-error: true
-      - if: failure()
-        run: sleep 30s
-      - if: failure()
-        uses: actions/checkout@v4
-        continue-on-error: true
-      - if: failure()
-        run: sleep 30s
-      - if: failure()
-        uses: actions/checkout@v4
       - name: Setup
         run: bash setup.sh
       - name: Full test
