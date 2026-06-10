@@ -16,7 +16,6 @@ from flagtensor.cutensor import CuTensorMax
 from flagtensor.cutensor import CuTensorMin
 from flagtensor.cutensor import CuTensorMul
 from flagtensor.testing import assert_close
-from tests._legacy_correctness_loader import populate_category_proxy
 
 
 @pytest.mark.add
@@ -203,4 +202,3 @@ def test_min_mode_permute_correctness(dtype):
     assert_close(z, expected, dtype)
 
 
-populate_category_proxy(globals(), "binary", skipped_names=("add", "mul", "max", "min"))

@@ -717,14 +717,20 @@ def _default_prepare(x: torch.Tensor) -> Tuple[Optional[torch.Tensor], torch.Ten
     return None, x
 
 
-# Dtypes supported by our Triton unary kernels
-_SUPPORTED_UNARY_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
+# Default dtypes supported by all Triton unary kernels.
+# Each operator can expand this via the supported_dtypes kwarg.
+_DEFAULT_UNARY_DTYPES = {torch.float16, torch.float32, torch.bfloat16}
+
+# Additional dtype groups for operators that support them.
+_TRIVIAL_UNARY_EXTRA = {torch.int8, torch.float8_e5m2}  # identity, abs
+_NEG_UNARY_EXTRA = {torch.int8}  # neg works for int8 (fp8_e5m2 fails on triton 3.3)
 
 class _UnaryPointwiseExecutor:
-    def __init__(self, kernel, prepare_input):
+    def __init__(self, kernel, prepare_input, supported_dtypes=None):
         self.kernel = kernel
         self.prepare_input = prepare_input
         self.layout_cache = {}
+        self._supported = supported_dtypes or _DEFAULT_UNARY_DTYPES
 
     def _layout_key(self, x: torch.Tensor):
         return (
@@ -742,10 +748,10 @@ class _UnaryPointwiseExecutor:
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if not x.is_cuda:
             raise ValueError("input tensor must be on CUDA")
-        if x.dtype not in _SUPPORTED_UNARY_DTYPES:
+        if x.dtype not in self._supported:
             raise ValueError(
                 f"unsupported dtype {x.dtype} for unary operator; "
-                f"supported: {_SUPPORTED_UNARY_DTYPES}"
+                f"supported: {sorted(str(d) for d in self._supported)}"
             )
         handled, prepared_x = self.prepare_input(x)
         if handled is not None:
@@ -774,10 +780,11 @@ def make_unary_pointwise(
     prepare_input: Optional[
         Callable[[torch.Tensor], Tuple[Optional[torch.Tensor], torch.Tensor]]
     ] = None,
+    supported_dtypes: Optional[set[torch.dtype]] = None,
 ):
     kernel = _build_unary_kernel(op_name, variant0, variant1)
     prepare = prepare_input or _default_prepare
-    executor = _UnaryPointwiseExecutor(kernel, prepare)
+    executor = _UnaryPointwiseExecutor(kernel, prepare, supported_dtypes=supported_dtypes)
 
     def op(x: torch.Tensor) -> torch.Tensor:
         return executor(x)
@@ -795,6 +802,7 @@ def make_unary_pointwise_from_family(
         Callable[[torch.Tensor], Tuple[Optional[torch.Tensor], torch.Tensor]]
     ] = None,
     rewrite_rules: Optional[Tuple[str, str]] = None,
+    supported_dtypes: Optional[set[torch.dtype]] = None,
 ):
     if family not in _UNARY_FAMILY_RULES:
         raise ValueError(f"unsupported unary family: {family}")
@@ -804,4 +812,5 @@ def make_unary_pointwise_from_family(
         variant0,
         variant1,
         prepare_input=prepare_input,
+        supported_dtypes=supported_dtypes,
     )

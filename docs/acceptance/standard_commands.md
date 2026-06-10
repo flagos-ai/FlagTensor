@@ -168,11 +168,11 @@ for spec in registry:
     impl_path = Path(spec.impl_file)
     if not impl_path.exists():
         errors.append(f"Missing impl: {spec.name} -> {spec.impl_file}")
-    
+
     test_path = Path(spec.correctness_test)
     if not test_path.exists():
         errors.append(f"Missing test: {spec.name} -> {spec.correctness_test}")
-    
+
     bench_path = Path(spec.benchmark_test)
     if not bench_path.exists():
         errors.append(f"Missing benchmark: {spec.name} -> {spec.benchmark_test}")

@@ -11,7 +11,6 @@ from flagtensor.config import DEFAULT_TTGT_TEST_SHAPES
 from flagtensor.cutensor import CUTENSOR_AVAILABLE
 from flagtensor.cutensor import CuTensorContraction
 from flagtensor.testing import assert_close
-from tests._legacy_correctness_loader import populate_category_proxy
 
 
 CONTRACT_DTYPES = list(DEFAULT_CORRECTNESS_DTYPES)  # f16, f32, f64, bf16
@@ -183,4 +182,3 @@ def test_ttgt_correctness(dtype, shape_a, shape_b):
     assert_close(out, out_base, dtype)
 
 
-populate_category_proxy(globals(), "contraction", skipped_names=("gett", "tgett", "ttgt"))

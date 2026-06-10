@@ -487,7 +487,7 @@ new Chart(ctx, {
 </script>
 </body>
 </html>"""
-    
+
     return html_content
 
 

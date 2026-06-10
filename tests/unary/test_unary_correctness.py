@@ -85,7 +85,6 @@ from flagtensor.cutensor import CuTensorSwish
 from flagtensor.cutensor import CuTensorTan
 from flagtensor.cutensor import CuTensorTanh
 from flagtensor.testing import assert_close
-from tests._legacy_correctness_loader import populate_category_proxy
 
 
 @pytest.mark.abs
@@ -610,4 +609,3 @@ def test_conj_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-populate_category_proxy(globals(), "unary", skipped_names=("abs", "acos", "identity", "neg", "relu", "ceil", "floor", "log", "sqrt", "sin", "cos", "tan", "sinh", "cosh", "tanh", "asin", "atan", "sigmoid", "mish", "asinh", "acosh", "atanh", "soft_plus", "soft_sign", "swish", "rcp", "conj"))
