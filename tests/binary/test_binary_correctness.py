@@ -200,6 +200,3 @@ def test_min_mode_permute_correctness(dtype):
     z = min(x, y, mode_x=(1, 0), mode_y=(0,), mode_out=(1, 0))
     expected = torch.minimum(x, y.view(1, 4))
     assert_close(z, expected, dtype)
-
-
-

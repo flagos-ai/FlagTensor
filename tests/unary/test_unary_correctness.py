@@ -607,6 +607,3 @@ def test_conj_correctness(dtype, shape):
         y_base = baseline(x)
         assert_close(y_base, expected, dtype)
         assert_close(y, y_base, dtype)
-
-
-
