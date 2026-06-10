@@ -202,3 +202,4 @@ def test_min_mode_permute_correctness(dtype):
     assert_close(z, expected, dtype)
 
 
+
