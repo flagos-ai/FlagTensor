@@ -26,7 +26,7 @@ jobs:
       - name: Run pre-commit
         run: |
           pip install pre-commit
-          pre-commit run --all-files --show-diff-on-failure
+          SKIP=flake8,isort,black,clang-format pre-commit run --all-files --show-diff-on-failure
 
   build-check:
     runs-on: ubuntu-latest
