@@ -1,170 +1,121 @@
-# FlagTensor Docker 镜像构建指南
+# FlagTensor Docker 交付指南
 
-## 环境差异说明
+## 跨 GPU 兼容原理
 
-当前实际验证通过的环境与之前交付的 `flagtensor_docker.md` 有以下关键差异：
+Docker 镜像本身**不绑定 GPU 型号**。关键机制是：
 
-| 组件 | 旧环境（之前文档） | 当前验证通过的环境 | 变化原因 |
-|------|-------------------|-------------------|---------|
-| 基础镜像 | `nvcr.io/nvidia/pytorch:25.05-py3` | `nvidia/cuda:12.4.0-devel-ubuntu22.04` | 避免 PyTorch 版本过高导致 CUDA 驱动不兼容 |
-| Python | 3.12 | 3.10 | 基础镜像自带 |
-| PyTorch | 25.05 镜像自带（≥2.7，cu128） | `2.6.0+cu124` | 驱动 535.161.08 最高支持 CUDA 12.2，PyTorch 2.7+ 需要 CUDA 12.6+，会导致 `torch.cuda.is_available()` 返回 False |
-| FlagTree | `0.5.0`（提供 Triton 3.6） | `0.4.0+3.3` | `0.5.0` 系列在内部源上只有 mthreads 变体（`0.5.1+mthreads3.6`），没有 NVIDIA CUDA 后端。`0.4.0+3.3` 是唯一同时具备 NVIDIA 后端、`triton.Config` 和 `triton.autotune` 的版本 |
-| cuTensor | 未知 | `cutensor-cu12 2.6.0`（pip） | pip 安装更简单，无需系统包管理器 |
+1. **基础镜像** `nvidia/cuda:12.4.0-devel-ubuntu22.04`：提供 CUDA 12.4 工具链
+2. **运行时 GPU 透传**：`docker run --gpus all` 将宿主机的 GPU 和驱动透传给容器
+3. **PyTorch 自适应**：容器内 PyTorch 在首次调用时自动检测 GPU 架构（Ampere/Hopper/Blackwell 等）
+4. **CUDA 兼容性**：CUDA 12.4 要求宿主机 NVIDIA 驱动 >= 525.60.13
 
-> **核心结论**：驱动版本（CUDA 12.2）是硬约束，决定了 PyTorch 不能超过 2.6.x。FlagTree 版本选择受限于内部源的可用变体，`0.4.0+3.3` 是当前唯一可用选择。
+已验证通过的硬件：
 
----
+| GPU | 架构 | 状态 |
+|-----|------|------|
+| NVIDIA A100-SXM4-40GB | Ampere (SM80) | ✅ 已验证 |
+| NVIDIA H800 | Hopper (SM90) | ✅ 甲方验收环境 |
 
-## 1. Dockerfile
+**FP8 自动处理**：Ampere (A100) 不支持 FP8 运算，benchmark 代码已自动跳过 FP8 dtype。Hopper (H100/H800) 支持 FP8，会自动启用。
 
-文件位于 `docker/Dockerfile`，内容如下：
+## 环境版本表
 
-```dockerfile
-# FlagTensor Docker 镜像
-# 基于当前验证通过的运行环境构建：
-#   Python 3.10 | PyTorch 2.6.0+cu124 | FlagTree 0.4.0+3.3 | cuTensor 2.6.0
+| 组件 | 版本 | 说明 |
+|------|------|------|
+| 基础镜像 | `nvidia/cuda:12.4.0-devel-ubuntu22.04` | CUDA 12.4，Python 3.10 |
+| PyTorch | 2.6.0+cu124 | 驱动 >= 525 即可运行 |
+| FlagTree | 0.4.0+3.3 | FlagOS Triton 分支，从内部源安装 |
+| cuTensor | cutensor-cu12 2.6.0 | pip 安装 + 软链接 |
+| cuda-bindings | >=12.9.6, <13 | nvmath 依赖 |
+| nvmath-python | 0.9.0 | NVIDIA 数学库 Python 绑定 |
+| Python 其他 | matplotlib, PyYAML | 可视化 + YAML 解析 |
 
-FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
+> **为什么 FlagTree 是 0.4.0+3.3 而不是 0.5.0？**
+>
+> 内部源上 FlagTree 有 15+ 个变体。0.5.0 系列目前只有 mthreads 变体（`0.5.1+mthreads3.6`），缺少 NVIDIA 后端。
+> `0.4.0+3.3` 是唯一同时具备 NVIDIA 后端 + `triton.Config` + `triton.autotune` 的版本。
 
-ENV PYTHONUNBUFFERED=1
-ENV DEBIAN_FRONTEND=noninteractive
-
-# ---- 系统依赖 ----
-RUN apt-get update -qq && apt-get install -y -qq \
-    python3 python3-pip git wget curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# ---- PyTorch 2.6.0 (CUDA 12.4，兼容驱动 535 / CUDA 12.2) ----
-RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
-RUN python3 -m pip install --no-cache-dir \
-    torch==2.6.0 \
-    --index-url https://download.pytorch.org/whl/cu124
-
-# ---- cuTensor (pip 安装 + 软链接) ----
-# FlagTensor 通过 ctypes.CDLL("libcutensor.so") 加载，
-# pip 安装后需创建软链接到系统库路径
-RUN python3 -m pip install --no-cache-dir cutensor-cu12 \
-    && ln -sf /usr/local/lib/python3.10/dist-packages/cutensor/lib/libcutensor.so.2 \
-       /usr/lib/x86_64-linux-gnu/libcutensor.so
-
-# ---- FlagTree 0.4.0+3.3 (FlagOS 维护的 Triton 分支) ----
-# 必须从此内部源安装，公共 PyPI 上没有此包
-RUN python3 -m pip install --no-cache-dir \
-    --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
-    --trusted-host=resource.flagos.net \
-    "flagtree==0.4.0+3.3" --no-deps
-
-# ---- Python 运行时依赖 ----
-RUN python3 -m pip install --no-cache-dir \
-    "cuda-bindings>=12.9.6,<13" \
-    nvmath-python \
-    matplotlib \
-    PyYAML
-
-# ---- 抑制 NGC/PyTorch 启动横幅 (基于 nvidia/cuda 镜像可能不存在此目录) ----
-RUN if [ -d /opt/nvidia/entrypoint.d ]; then \
-      touch /opt/nvidia/entrypoint.d/10-banner.txt 2>/dev/null || true; \
-      printf '#!/bin/bash\n# suppressed\n' > /opt/nvidia/entrypoint.d/12-banner.sh 2>/dev/null || true; \
-    fi
-
-# ---- 安装 FlagTensor ----
-COPY . /workspace
-WORKDIR /workspace
-RUN python3 -m pip install -e . --no-deps
-
-# ---- 构建阶段验证 (导入检查，GPU 在运行时才可用) ----
-RUN python3 -c "import torch; print('torch:', torch.__version__)" \
-    && python3 -c "import flagtensor; print('flagtensor OK')" \
-    && python3 -c "import triton; assert hasattr(triton, 'Config'), 'triton.Config missing'; print('triton OK')" \
-    && python3 -c "import cutensor; print('cuTensor OK')" \
-    && echo "=== FlagTensor Docker 镜像构建成功 ==="
-```
-
----
-
-## 2. 构建镜像
+## 1. 构建镜像
 
 ```bash
 cd FlagTensor
-docker build -f docker/Dockerfile -t flagtensor-a100:latest .
+docker build -f docker/Dockerfile -t flagtensor:latest .
 ```
 
-构建时间约 5-10 分钟（取决于网络速度，FlagTree 包约 328MB）。
-
----
-
-## 3. 运行容器
+## 2. 运行容器
 
 ```bash
-# 交互式终端
-docker run -it --gpus all --shm-size=16g \
-  -v $(pwd):/workspace -w /workspace \
-  flagtensor-a100:latest bash
+# 单 GPU
+docker run --gpus all --shm-size=16g -v $(pwd):/workspace -w /workspace \
+  flagtensor:latest \
+  python3 tools/run_tests.py --stages all --gpus 0
 
-# 运行全量测试
-docker run --gpus all --shm-size=16g \
-  -v $(pwd):/workspace -w /workspace \
-  flagtensor-a100:latest \
-  python3 tools/run_tests.py --stages stable --gpus 0
+# 多 GPU（例如 8 卡 H800）
+docker run --gpus all --shm-size=16g -v $(pwd):/workspace -w /workspace \
+  flagtensor:latest \
+  python3 tools/run_tests.py --gpus 0,1,2,3,4,5,6,7 --stages all --dump-output --output logs_results
 
-# 运行单个算子测试
-docker run --gpus all --shm-size=16g \
-  -v $(pwd):/workspace -w /workspace \
-  flagtensor-a100:latest \
-  python3 -m pytest tests/unary/test_abs.py -v
+# 只跑稳定算子
+docker run --gpus all --shm-size=16g -v $(pwd):/workspace -w /workspace \
+  flagtensor:latest \
+  python3 tools/run_tests.py --stages stable --gpus 0 --dump-output --output logs_results
 ```
 
----
+## 3. 验收流程
 
-## 4. 导出 / 加载镜像
+甲方的标准操作步骤：
 
 ```bash
-# 导出（构建机器上执行）
-docker save -o flagtensor-a100.tar flagtensor-a100:latest
+# 1. 克隆代码
+git clone https://github.com/flagos-ai/FlagTensor.git
+cd FlagTensor
 
-# 加载（目标机器上执行）
-docker load -i flagtensor-a100.tar
+# 2. 构建镜像
+docker build -f docker/Dockerfile -t flagtensor:latest .
+
+# 3. 运行验收测试（8 卡全量）
+docker run --gpus all --shm-size=16g -v $(pwd):/workspace -w /workspace \
+  flagtensor:latest \
+  python3 tools/run_tests.py --gpus 0,1,2,3,4,5,6,7 --stages all --dump-output --output logs_results
+
+# 4. 查看结果
+cat logs_results/summary.json | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+acc = sum(1 for v in d['result'].values() if v['accuracy']['status']=='Passed')
+perf = sum(1 for v in d['result'].values() if v['performance']['status']=='Passed')
+print(f'Accuracy: {acc}/{len(d[\"result\"])}')
+print(f'Performance: {perf}/{len(d[\"result\"])}')
+"
 ```
 
----
+## 4. 导出 / 加载
+
+```bash
+# 导出
+docker save -o flagtensor.tar flagtensor:latest
+
+# 加载
+docker load -i flagtensor.tar
+```
 
 ## 5. 容器内验证
 
-进入容器后执行以下命令，确认环境正常：
-
 ```bash
-# 检查 PyTorch + CUDA
-python3 -c "import torch; print('torch:', torch.__version__, 'CUDA:', torch.cuda.is_available())"
+docker run -it --gpus all --shm-size=16g -v $(pwd):/workspace -w /workspace flagtensor:latest bash
 
-# 检查 FlagTree (Triton)
+# 在容器内执行：
+python3 -c "import torch; print('GPU:', torch.cuda.get_device_name(), 'CUDA OK:', torch.cuda.is_available())"
 python3 -c "import triton; print('triton:', triton.__version__, 'Config:', hasattr(triton,'Config'))"
-
-# 检查 cuTensor
 python3 -c "from flagtensor.cutensor import CUTENSOR_AVAILABLE; print('cuTensor:', CUTENSOR_AVAILABLE)"
-
-# 冒烟测试
-python3 -c "
-from flagtensor.cutensor import CuTensorAdd
-import torch
-x, y = torch.randn(100, device='cuda'), torch.randn(100, device='cuda')
-z = CuTensorAdd()(x, y)
-print('cuTensor Add OK:', z.shape)
-"
-
-# 跑几个算子验证
-python3 tools/run_tests.py --ops abs,exp,add --gpus 0
+python3 tools/run_tests.py --ops abs,exp --gpus 0
 ```
 
----
+## 6. 旧版本文档对照
 
-## 6. 旧版本文档对比
-
-| 旧文档 (flagtensor_docker.md) | 新文档 |
-|------------------------------|--------|
-| 基础镜像 `nvcr.io/nvidia/pytorch:25.05-py3` | `nvidia/cuda:12.4.0-devel-ubuntu22.04` |
-| FlagTree 0.5.0 | FlagTree 0.4.0+3.3 |
-| 需下载 `.tar.gz` 并 `docker load` | 使用公共 Docker Hub 基础镜像 + pip 安装 |
-| 多阶段构建（v1 → v2） | 单阶段构建 |
-| 含 curand 测试脚本 | 含 FlagTensor 导入 + API 冒烟测试 |
-| 构建两次 | 构建一次即可 |
+| 旧文档 | 新文档 |
+|--------|--------|
+| `nvcr.io/nvidia/pytorch:25.05-py3` | `nvidia/cuda:12.4.0-devel-ubuntu22.04`（CUDA 12.4） |
+| FlagTree 0.5.0（Triton 3.6） | FlagTree 0.4.0+3.3 |
+| 多阶段构建 | 单阶段构建 |
+| Docker Hub 闭源镜像，需下载 .tar.gz | 公共镜像 + pip + 内部源 |
