@@ -2,6 +2,7 @@ FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
+ENV GEMS_VENDOR=nvidia
 
 # 系统依赖
 RUN chmod 1777 /tmp \
@@ -29,16 +30,17 @@ RUN python3 -m pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/s
     "cuda-bindings>=12.9.6,<13" \
     nvmath-python \
     matplotlib \
-    PyYAML
+    PyYAML \
+    pytest \
+    openpyxl
 
 # FlagTensor
 COPY . /workspace
 WORKDIR /workspace
 RUN python3 -m pip install -e . --no-deps
 
-# 构建阶段导入验证
+# 构建阶段验证（仅验证不依赖 GPU 的包；flagtensor 需要 GPU 驱动，运行时验证）
 RUN python3 -c "import torch; print('torch:', torch.__version__)" \
-    && python3 -c "import flagtensor; print('flagtensor OK')" \
     && python3 -c "import triton; assert hasattr(triton, 'Config'), 'triton OK'" \
     && python3 -c "import cutensor; print('cuTensor OK')" \
-    && echo "=== FlagTensor 镜像构建成功 ==="
+    && echo "=== FlagTensor 镜像构建成功（运行时需 docker run --gpus=all） ==="
