@@ -46,12 +46,12 @@ pip install --no-cache-dir \
 ```
 
 > **为什么是 0.4.0+3.3？**
-> 
+>
 > 内部源上 FlagTree 有多个版本，但只有 `0.4.0+3.3` 同时满足：
 > - NVIDIA 后端（`triton/backends/nvidia/`）
 > - `triton.Config` 类（`@triton.autotune` 装饰器需要）
 > - `triton.language.extra.cuda.libdevice`（算子的数学函数实现需要）
-> 
+>
 > `0.5.0` 系列目前只有 mthreads 变体（如 `0.5.1+mthreads3.6`），缺少 NVIDIA CUDA 后端支持。
 > `0.5.0+aipu3.3` 是 AIPU（寒武纪）变体，也没有 CUDA 后端。
 
