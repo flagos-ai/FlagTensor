@@ -43,7 +43,7 @@ def _default_registry_path() -> Path:
 def load_operator_registry(registry_path: Optional[Union[str, Path]] = None) -> List[OperatorSpec]:
     path = Path(registry_path) if registry_path else _default_registry_path()
     payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    items = payload.get("operators", [])
+    items = payload.get("ops", [])
     specs = []
     for item in items:
         specs.append(

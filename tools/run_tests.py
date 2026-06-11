@@ -205,7 +205,7 @@ def get_ops_from_inventory():
         op_inventory = ROOT / "conf" / "operators.yaml"
         with open(str(op_inventory), "r") as f:
             data = yaml.safe_load(f)
-            catalog = data.get("operators", [])
+            catalog = data.get("ops", [])
     except Exception as e:
         perror(f"Failed to load operator inventory: {e}")
     return catalog
@@ -635,6 +635,13 @@ def worker_proc(gpu_id, work_queue, display_queue):
         op_dir = CFG.output_dir / op
         ensure_dir(op_dir)
 
+        # Load operator metadata from YAML
+        op_meta = {}
+        for o in get_ops_from_inventory():
+            if o.get("name") == op or o.get("id") == op:
+                op_meta = o
+                break
+
         display_queue.put(("start", gpu_id, "accuracy", op))
         acc = run_accuracy_q(gpu_id, op)
         display_queue.put((
@@ -649,7 +656,12 @@ def worker_proc(gpu_id, work_queue, display_queue):
             perf.get("status", "Error"), perf.get("duration", 0),
         ))
 
-        result = {"accuracy": acc, "performance": perf}
+        result = {
+            "customized": False,
+            "accuracy": acc,
+            "performance": perf,
+            "labels": op_meta.get("labels", []),
+        }
         worker_result[op] = result
 
         json_path = CFG.output_dir / f"summary{gpu_id}.json"

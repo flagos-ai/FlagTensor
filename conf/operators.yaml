@@ -1,4 +1,4 @@
-operators:
+ops:
 - name: abs
   category: unary
   python_api: flagtensor.abs

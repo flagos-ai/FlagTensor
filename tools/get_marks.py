@@ -42,7 +42,7 @@ def main():
     with open(YAML_PATH) as f:
         data = yaml.safe_load(f)
 
-    ops = data.get("operators", [])
+    ops = data.get("ops", [])
     marks = []
 
     for op in ops:

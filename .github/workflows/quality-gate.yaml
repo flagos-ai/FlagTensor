@@ -57,7 +57,7 @@ jobs:
           import sys, yaml
           from pathlib import Path
           with open("conf/operators.yaml") as f:
-              ops = yaml.safe_load(f)["operators"]
+              ops = yaml.safe_load(f)["ops"]
           errors = []
           for op in ops:
               name = op["name"]
