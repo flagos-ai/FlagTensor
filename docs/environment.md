@@ -1,121 +1,112 @@
 # FlagTensor 环境搭建指南
 
-## 1. 基础环境要求
+## 已验证环境
 
-| 组件 | 要求 |
-|------|------|
-| GPU | NVIDIA A100/H100/H20 等（CUDA compute capability ≥ 8.0） |
-| CUDA 驱动 | ≥ 12.2 |
-| Python | 3.10+ |
-| OS | Ubuntu 22.04 |
+| 组件 | 版本 | 说明 |
+|------|------|------|
+| GPU | NVIDIA A100-SXM4-40GB | CUDA compute capability 8.0 (Ampere) |
+| CUDA 驱动 | 535.161.08 | CUDA 12.2 |
+| Python | 3.10.12 | |
+| OS | Ubuntu 22.04.5 LTS | x86_64 |
+| PyTorch | 2.6.0+cu124 | |
+| FlagTree | 0.4.0+3.3 | FlagOS 维护的 Triton 分支 |
+| cuTensor | cutensor-cu12 2.6.0 | pip 安装 |
+| cuda-bindings | 12.9.7 | nvmath-python 依赖 |
+| nvmath-python | 0.9.0 | NVIDIA 数学库 Python 绑定 |
+| matplotlib | 3.10.1 | 可视化 |
+| PyYAML | 6.0+ | 算子注册表 |
 
-## 2. 安装步骤
+## 安装步骤
 
-### 2.1 安装 PyTorch + CUDA 工具链
+### 1. 安装 PyTorch
 
 ```bash
-# PyTorch 2.6.0 (CUDA 12.4)
 pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+```
 
-# cuTensor
+> PyTorch 版本不能超过 2.6.x。驱动 535 只支持到 CUDA 12.2，PyTorch 2.7+ 需要 CUDA 12.6+，会导致 `torch.cuda.is_available()` 返回 False。
+
+### 2. 安装 cuTensor
+
+```bash
 pip install cutensor-cu12
 ln -sf $(python3 -c "import cutensor; print(cutensor.__path__[0])")/lib/libcutensor.so.2 \
   /usr/lib/x86_64-linux-gnu/libcutensor.so
-
-# NVIDIA 数学库
-pip install "cuda-bindings>=12.9.6,<13" nvmath-python matplotlib PyYAML openpyxl
 ```
 
-### 2.2 安装 FlagTree（Triton 分支）
+> FlagTensor 通过 `ctypes.CDLL("libcutensor.so")` 加载 cuTensor，pip 安装后需手动创建软链接。
+
+### 3. 安装 FlagTree
 
 ```bash
-# 从内部源安装（需要 flagos 仓库访问权限）
 pip install --no-cache-dir \
   --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
   --trusted-host=resource.flagos.net \
   "flagtree==0.4.0+3.3" --no-deps
 ```
 
-> **说明**：FlagTree 是 flagos-ai 维护的 Triton 分支，`0.4.0+3.3` 版本对应 Triton 3.3 内核。
-> 该版本包含 `triton.Config` 和 `triton.autotune`，且同时包含 NVIDIA 和 AMD 后端。
+> **为什么是 0.4.0+3.3？**
+> 
+> 内部源上 FlagTree 有多个版本，但只有 `0.4.0+3.3` 同时满足：
+> - NVIDIA 后端（`triton/backends/nvidia/`）
+> - `triton.Config` 类（`@triton.autotune` 装饰器需要）
+> - `triton.language.extra.cuda.libdevice`（算子的数学函数实现需要）
+> 
+> `0.5.0` 系列目前只有 mthreads 变体（如 `0.5.1+mthreads3.6`），缺少 NVIDIA CUDA 后端支持。
+> `0.5.0+aipu3.3` 是 AIPU（寒武纪）变体，也没有 CUDA 后端。
 
-### 2.3 安装 FlagTensor
+### 4. 安装 Python 依赖
 
 ```bash
-pip install -e /path/to/FlagTensor --no-deps
+pip install "cuda-bindings>=12.9.6,<13" nvmath-python matplotlib PyYAML
 ```
 
-使用 `--no-deps` 避免自动升级 PyTorch/triton 版本。
-
-### 2.4 验证安装
+### 5. 安装 FlagTensor
 
 ```bash
-# 验证 cuTensor 可用
+cd /path/to/FlagTensor
+pip install -e . --no-deps
+```
+
+> 使用 `--no-deps` 避免 pip 自动升级 PyTorch 和 triton 版本。
+
+## 验证
+
+```bash
+# 基础验证
+python3 -c "import torch; assert torch.cuda.is_available(); print('torch:', torch.__version__)"
+python3 -c "import triton; assert hasattr(triton, 'Config'); print('triton OK')"
+python3 -c "from flagtensor.cutensor import CUTENSOR_AVAILABLE; assert CUTENSOR_AVAILABLE; print('cuTensor OK')"
+
+# 冒烟测试
 python3 -c "
+from flagtensor.cutensor import CuTensorAdd
 import torch
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorAdd
-print('CUTENSOR_AVAILABLE:', CUTENSOR_AVAILABLE)
 x, y = torch.randn(100, device='cuda'), torch.randn(100, device='cuda')
-print('OK:', CuTensorAdd()(x, y).shape)
+z = CuTensorAdd()(x, y)
+print('OK:', z.shape)
 "
 
-# 运行精度测试
+# 单算子测试
 pytest tests/unary/test_abs.py -v
 
-# 运行所有 stable 算子
+# 全量 Stable 算子测试
 python tools/run_tests.py --stages stable --gpus 0
 ```
 
-## 3. 使用清华镜像源（加速安装）
+## 镜像加速
 
-若 PyPI 下载较慢，添加 `-i https://pypi.tuna.tsinghua.edu.cn/simple`：
+若 PyPI 下载较慢，使用清华源：
 
 ```bash
-pip install -i https://pypi.tuna.tsinghua.edu.cn/simple torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
-pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12 cuda-bindings nvmath-python matplotlib PyYAML openpyxl
-pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -e /path/to/FlagTensor --no-deps
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple torch==2.6.0 \
+  --index-url https://download.pytorch.org/whl/cu124
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple cutensor-cu12 matplotlib PyYAML
 ```
 
-## 4. 版本锁定说明
+## 已知限制
 
-| 包 | 版本 | 原因 |
-|---|------|------|
-| `torch` | `2.6.0+cu124` | 与 CUDA 12.2 驱动兼容 |
-| `flagtree` | `0.4.0+3.3` | 唯一同时提供 NVIDIA 后端 + `triton.Config` 的内部版本 |
-| `cuda-bindings` | `≥12.9.6, <13` | nvmath-python 依赖 |
-| `cutensor-cu12` | `2.6.0` | pip 安装，需做 libcutensor.so 软链接 |
-
-> **注意**：PyTorch 版本不能超过 2.6.x，否则可能需要更新 NVIDIA 驱动（驱动 535 只支持到 CUDA 12.2，而 PyTorch 2.7+ 需要 CUDA 12.6+）。
-
-## 5. 多厂商适配（预留接口）
-
-FlagTensor 目前已预留多厂商后端接口，只需新建对应厂商模块即可接入：
-
-```
-src/flagtensor/runtime/backend/
-├── _nvidia/        # 当前唯一实现
-│   ├── __init__.py          # vendor_info 定义
-│   ├── ampere/              # A100 架构 autotune
-│   └── hopper/              # H100 架构 autotune
-└── _<vendor>/      # 新厂商模块（如 _ascend/_cambricon 等）
-    └── __init__.py          # 只需 5 行 vendor_info 即可接入
-```
-
-新厂商接入示例（以华为昇腾为例，仅作预留）：
-
-```python
-# 新建 src/flagtensor/runtime/backend/_ascend/__init__.py
-from backend_utils import VendorInfoBase
-
-vendor_info = VendorInfoBase(
-    vendor_name="ascend",
-    device_name="npu",
-    device_query_cmd="npu-smi info",
-    dispatch_key="PrivateUse1",
-)
-```
-
-厂商自动检测优先级：
-1. 环境变量 `GEMS_VENDOR`、`FLAGGEMS_VENDOR`
-2. PyTorch 属性检测（`torch.npu`、`torch.mlu` 等）
-3. 系统命令检测（`nvidia-smi`、`npu-smi info` 等）
+- **PyTorch 版本上限**：驱动 535 只能到 CUDA 12.2，PyTorch 需 ≤ 2.6.x
+- **FlagTree 版本锁定**：仅 0.4.0+3.3 同时有 NVIDIA 后端 + Config + autotune
+- **cuTensor 软链接**：pip 安装后需手动创建 libcutensor.so 链接
+- **FP8 不支持**：A100 (Ampere) 不支持 FP8 数据类型，benchmark 已自动排除
