@@ -4,7 +4,8 @@ ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 系统依赖
-RUN apt-get update -qq && apt-get install -y -qq \
+RUN chmod 1777 /tmp \
+    && apt-get update -qq && apt-get install -y -qq \
     python3 python3-pip git \
     && rm -rf /var/lib/apt/lists/*
 
