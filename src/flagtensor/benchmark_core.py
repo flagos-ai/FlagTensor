@@ -403,7 +403,7 @@ def _try_record_benchmark(op_name: str, metric: dict) -> None:
     data = {
         "dtype": metric.get("dtype", ""),
         "result": [{
-            "shape_detail": str(metric.get("shape", ())).replace(" ", ""),
+            "shape_detail": str(list(metric.get("shape", ()))).replace(" ", ""),
             "latency_base": metric.get("latency_base", 0) or 0,
             "latency": metric.get("latency", 0) or 0,
             "speedup": metric.get("speedup", 0) or 0,
