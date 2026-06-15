@@ -199,7 +199,7 @@ class LibCache(object):
         if db_path is None:
             try:
                 device_name = torch_device_fn.get_device_name().replace(" ", "_")
-            except AttributeError:
+            except (AttributeError, RuntimeError):
                 device_name = device.name
             cache_file_name = f"TunedConfig_{device_name}_triton_{major}_{minor}.db"
             db_path = _config_cache_dir() / cache_file_name
