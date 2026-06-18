@@ -652,7 +652,7 @@ class BlockSparseTensorContraction:
             out_sparse = self.cutensor_executor(a, mode_a, b, mode_b, c, mode_c, mode_d, alpha=alpha, beta=beta)
             return out_sparse.to_dense()
 
-        result = gett(
+        result = contraction(
             dense_a,
             dense_b,
             c=dense_c,
@@ -2297,7 +2297,7 @@ class CuTensorContractionTrinary:
         pass
 
 
-# Module-level executor cache for the `trinary(...)` wrapper. Building a
+# Module-level executor cache for the `elementwise_trinary(...)` wrapper. Building a
 # CuTensorTrinary (handle + tensor/operation descriptors + plan) is expensive
 # (millisecond range); re-using one across calls with the same operator
 # signature keeps the Python wrapper cost down to the actual GPU work.
@@ -2327,7 +2327,7 @@ def _get_trinary_executor(op_ab, op_abc, op_a, op_b, op_c, dtype):
     return executor
 
 
-def trinary(
+def elementwise_trinary(
     a,
     b,
     c,
@@ -2362,7 +2362,7 @@ def trinary(
     )
 
 
-def tensor_contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, mode_e=None, out=None):
+def contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, mode_e=None, out=None):
     executor = _get_trinary_contraction_executor(a.dtype)
     return executor(
         a,
@@ -2380,7 +2380,7 @@ def tensor_contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=N
     )
 
 
-def gett(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
+def contraction(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
     executor = _get_gett_executor(a.dtype)
     return executor(
         a,
@@ -2396,38 +2396,4 @@ def gett(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=
     )
 
 
-def tgett(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
-    if a.ndim < 2:
-        raise ValueError("tgett requires the first input to have at least 2 dimensions")
-    a_t = a.transpose(-1, -2).contiguous()
-    return gett(
-        a_t,
-        b,
-        c=c,
-        alpha=alpha,
-        beta=beta,
-        mode_a=mode_a,
-        mode_b=mode_b,
-        mode_c=mode_c,
-        mode_d=mode_d,
-        out=out,
-    )
 
-
-def ttgt(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
-    if a.ndim < 2 or b.ndim < 2:
-        raise ValueError("ttgt requires both inputs to have at least 2 dimensions")
-    a_t = a.transpose(-1, -2).contiguous()
-    b_t = b.transpose(-1, -2).contiguous()
-    return gett(
-        a_t,
-        b_t,
-        c=c,
-        alpha=alpha,
-        beta=beta,
-        mode_a=mode_a,
-        mode_b=mode_b,
-        mode_c=mode_c,
-        mode_d=mode_d,
-        out=out,
-    )

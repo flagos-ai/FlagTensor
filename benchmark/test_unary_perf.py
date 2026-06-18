@@ -50,7 +50,7 @@ for legacy_path in UNARY_FILES:
     if not legacy_path.exists():
         continue
     legacy_module = _load_legacy_module(legacy_path)
-    marker_name = legacy_path.stem.replace("test_CUTENSOR_OP_", "").replace("_perf", "").lower()
+    marker_name = legacy_path.stem.removeprefix("test_").removesuffix("_perf")
     marker = getattr(pytest.mark, marker_name)
     for name, value in vars(legacy_module).items():
         if name.startswith("test_"):

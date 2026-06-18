@@ -24,10 +24,9 @@ CATEGORY_MAP = {
     "sin": "unary", "sinh": "unary", "soft_plus": "unary", "soft_sign": "unary",
     "sqrt": "unary", "swish": "unary", "tan": "unary", "tanh": "unary",
     "add": "binary", "mul": "binary", "max": "binary", "min": "binary",
-    "gett": "contraction", "tgett": "contraction", "ttgt": "contraction",
-    "trinary_generic": "contraction",
-    "tensor_contraction_trinary": "contraction",
-    "block_sparse_tensor_contraction": "sparse",
+    "contraction": "contraction", "contraction_trinary": "contraction",
+    "elementwise_trinary": "contraction",
+    "block_sparse_contraction": "sparse",
 }
 
 

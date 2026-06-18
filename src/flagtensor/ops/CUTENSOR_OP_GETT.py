@@ -460,7 +460,7 @@ def _contract_via_triton_gett(a, b, c, mode_a, mode_b, mode_c, mode_d, alpha, be
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
-def gett(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
+def contraction(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
     """General tensor contraction: ``alpha * A @ B + beta * C``.
 
     Fast path: 2D contiguous float16/float32 with default modes uses a

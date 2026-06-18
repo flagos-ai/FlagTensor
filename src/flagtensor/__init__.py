@@ -10,14 +10,14 @@ from flagtensor.ops.CUTENSOR_OP_ASIN import asin
 from flagtensor.ops.CUTENSOR_OP_ASINH import asinh
 from flagtensor.ops.CUTENSOR_OP_ATAN import atan
 from flagtensor.ops.CUTENSOR_OP_ATANH import atanh
-from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import block_sparse_tensor_contraction
+from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import block_sparse_contraction
 from flagtensor.ops.CUTENSOR_OP_CEIL import ceil
 from flagtensor.ops.CUTENSOR_OP_CONJ import conj
 from flagtensor.ops.CUTENSOR_OP_COS import cos
 from flagtensor.ops.CUTENSOR_OP_COSH import cosh
 from flagtensor.ops.CUTENSOR_OP_EXP import exp
 from flagtensor.ops.CUTENSOR_OP_FLOOR import floor
-from flagtensor.ops.CUTENSOR_OP_GETT import gett
+from flagtensor.ops.CUTENSOR_OP_GETT import contraction
 from flagtensor.ops.CUTENSOR_OP_IDENTITY import identity
 from flagtensor.ops.CUTENSOR_OP_LOG import log
 from flagtensor.ops.CUTENSOR_OP_MISH import mish
@@ -36,14 +36,12 @@ from flagtensor.ops.CUTENSOR_OP_SQRT import sqrt
 from flagtensor.ops.CUTENSOR_OP_SWISH import swish
 from flagtensor.ops.CUTENSOR_OP_TAN import tan
 from flagtensor.ops.CUTENSOR_OP_TANH import tanh
-from flagtensor.ops.CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY import tensor_contraction_trinary
-from flagtensor.ops.CUTENSOR_OP_TGETT import tgett
+from flagtensor.ops.CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY import contraction_trinary
 try:
-    from flagtensor.ops.CUTENSOR_OP_TRINARY_GENERIC import trinary
+    from flagtensor.ops.CUTENSOR_OP_TRINARY_GENERIC import elementwise_trinary
 except Exception:
-    trinary = None
-from flagtensor.ops.CUTENSOR_OP_TTGT import ttgt
+    elementwise_trinary = None
 
-__all__ = ["BlockSparseTensor", "BlockSparseTensorContraction", "BlockSparseTensorDescriptor", "add", "abs", "acosh", "acos", "asin", "asinh", "atan", "atanh", "block_sparse_tensor_contraction", "ceil", "exp", "floor", "gett", "identity", "log", "mish", "min", "max", "mul", "soft_plus", "soft_sign", "sqrt", "relu", "conj", "cos", "cosh", "neg", "rcp", "sigmoid", "sin", "sinh", "swish", "tan", "tanh", "tensor_contraction_trinary", "tgett", "trinary", "ttgt"]
+__all__ = ["BlockSparseTensor", "BlockSparseTensorContraction", "BlockSparseTensorDescriptor", "add", "abs", "acosh", "acos", "asin", "asinh", "atan", "atanh", "block_sparse_contraction", "ceil", "exp", "floor", "contraction", "identity", "log", "mish", "min", "max", "mul", "soft_plus", "soft_sign", "sqrt", "relu", "conj", "cos", "cosh", "neg", "rcp", "sigmoid", "sin", "sinh", "swish", "tan", "tanh", "contraction_trinary", "elementwise_trinary"]
 
 runtime.replace_customized_ops(globals())

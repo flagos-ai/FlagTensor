@@ -6,7 +6,7 @@ from flagtensor.cutensor import _infer_trinary_contraction_output_shape
 from flagtensor.cutensor import _infer_contraction_output_shape
 from flagtensor.cutensor import _normalize_modes
 from flagtensor.cutensor import _validate_trinary_contraction_addend
-from flagtensor.ops.CUTENSOR_OP_GETT import gett
+from flagtensor.ops.CUTENSOR_OP_GETT import contraction
 from flagtensor.ops.CUTENSOR_OP_GETT import _launch_gett_kernel
 from flagtensor.ops.CUTENSOR_OP_GETT import _get_prepared_gett_launcher
 
@@ -325,7 +325,7 @@ def _supports_fused_triton_trinary(a, b, c, d, mode_a, mode_b, mode_c, mode_d, m
 
 def _validate_triton_trinary_inputs(a, b, c, d, out):
     if a.ndim != 2 or b.ndim != 2 or c.ndim != 2:
-        raise ValueError("default Triton tensor_contraction_trinary requires rank-2 inputs")
+        raise ValueError("default Triton contraction_trinary requires rank-2 inputs")
     if a.shape[1] != b.shape[0]:
         raise ValueError("inner dimensions must match for the first contraction")
     if b.shape[1] != c.shape[0]:
@@ -342,7 +342,7 @@ def _validate_triton_trinary_inputs(a, b, c, d, out):
             raise ValueError(f"output tensor shape mismatch: expected {expected_shape}, got {tuple(out.shape)}")
 
 
-def tensor_contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, mode_e=None, out=None):
+def contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, mode_e=None, out=None):
     if not a.is_cuda or not b.is_cuda or not c.is_cuda:
         raise ValueError("input tensors must be on CUDA")
     if a.dtype != b.dtype or a.dtype != c.dtype:
@@ -388,9 +388,9 @@ def tensor_contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=N
         if a.dtype in (torch.float16, torch.float32, torch.bfloat16):
             launcher = _get_prepared_trinary_launcher(a, b, c, addend, intermediate_out, output)
             return launcher(a, b, c, addend, intermediate_out, output, alpha, beta)
-        # Fall through to the generic gett()-based path for unsupported dtypes (e.g. bfloat16)
+        # Fall through to the generic contraction()-based path for unsupported dtypes (e.g. bfloat16)
 
-    intermediate = gett(
+    intermediate = contraction(
         a,
         b,
         alpha=1.0,
@@ -401,7 +401,7 @@ def tensor_contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=N
         mode_d=intermediate_modes,
         out=intermediate_out,
     )
-    return gett(
+    return contraction(
         intermediate,
         c,
         c=addend,

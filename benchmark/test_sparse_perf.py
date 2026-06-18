@@ -7,7 +7,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent
 LEGACY_BENCHMARKS = ROOT
 SPARSE_FILES = [
-    LEGACY_BENCHMARKS / "test_CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION_perf.py",
+    LEGACY_BENCHMARKS / "test_BlockSparseContraction_perf.py",
 ]
 
 
@@ -23,7 +23,7 @@ for legacy_path in SPARSE_FILES:
     if not legacy_path.exists():
         continue
     legacy_module = _load_legacy_module(legacy_path)
-    marker_name = legacy_path.stem.replace("test_CUTENSOR_OP_", "").replace("_perf", "").lower()
+    marker_name = legacy_path.stem.removeprefix("test_").removesuffix("_perf")
     marker = getattr(pytest.mark, marker_name)
     for name, value in vars(legacy_module).items():
         if name.startswith("test_"):

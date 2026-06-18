@@ -7,11 +7,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent
 LEGACY_BENCHMARKS = ROOT
 LEGACY_FILES = [
-    LEGACY_BENCHMARKS / "test_CUTENSOR_OP_GETT_perf.py",
-    LEGACY_BENCHMARKS / "test_CUTENSOR_OP_TGETT_perf.py",
-    LEGACY_BENCHMARKS / "test_CUTENSOR_OP_TTGT_perf.py",
-    LEGACY_BENCHMARKS / "test_CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY_perf.py",
-    LEGACY_BENCHMARKS / "test_CUTENSOR_OP_TRINARY_GENERIC_perf.py",
+    LEGACY_BENCHMARKS / "test_Contraction_perf.py",
+    LEGACY_BENCHMARKS / "test_ContractionTrinary_perf.py",
+    LEGACY_BENCHMARKS / "test_ElementwiseTrinary_perf.py",
 ]
 
 
@@ -27,7 +25,7 @@ for legacy_path in LEGACY_FILES:
     if not legacy_path.exists():
         continue
     legacy_module = _load_legacy_module(legacy_path)
-    marker_name = legacy_path.stem.replace("test_CUTENSOR_OP_", "").replace("_perf", "").lower()
+    marker_name = legacy_path.stem.removeprefix("test_").removesuffix("_perf")
     marker = getattr(pytest.mark, marker_name)
     for name, value in vars(legacy_module).items():
         if name.startswith("test_"):

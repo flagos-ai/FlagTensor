@@ -247,7 +247,7 @@ def _get_cached_pair_indices(a_desc, b_desc, plan, device):
     return result
 
 
-def block_sparse_tensor_contraction(
+def block_sparse_contraction(
     a: BlockSparseTensor,
     b: BlockSparseTensor,
     *,
@@ -369,4 +369,4 @@ def block_sparse_tensor_contraction(
     )
 
 
-__all__ = ["BlockSparseTensor", "BlockSparseTensorContraction", "BlockSparseTensorDescriptor", "block_sparse_tensor_contraction"]
+__all__ = ["BlockSparseTensor", "BlockSparseTensorContraction", "BlockSparseTensorDescriptor", "block_sparse_contraction"]
