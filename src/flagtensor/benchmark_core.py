@@ -398,18 +398,39 @@ def _try_record_benchmark(op_name: str, metric: dict) -> None:
     update_result = getattr(bm, "update_result", None)
     if update_result is None:
         return
-    # Derive short name: "CUTENSOR_OP_ABS" -> "abs"
-    short_name = op_name.replace("CUTENSOR_OP_", "").replace("_perf", "").strip("_").lower()
+
+    # Derive level from bench conftest Config (mirrors flag_gems default: "core")
+    bench_level = getattr(Config, "bench_level", None)
+    if bench_level is not None:
+        level = bench_level.value if hasattr(bench_level, "value") else str(bench_level)
+    else:
+        level = "core"
+
+    shape_tuple = metric.get("shape", ())
+    mode = metric.get("mode", "kernel")
+    dtype = metric.get("dtype", "")
+
     data = {
-        "dtype": metric.get("dtype", ""),
+        "op_name": op_name,
+        "dtype": dtype,
+        "mode": mode,
+        "level": level,
         "result": [{
-            "shape_detail": str(list(metric.get("shape", ()))).replace(" ", ""),
+            "legacy_shape": None,
+            "shape_detail": [list(shape_tuple)],
             "latency_base": metric.get("latency_base", 0) or 0,
             "latency": metric.get("latency", 0) or 0,
+            "gbps_base": None,
+            "gbps": None,
             "speedup": metric.get("speedup", 0) or 0,
+            "accuracy": None,
+            "tflops": None,
+            "utilization": None,
+            "compared_speedup": None,
+            "error_msg": None,
         }],
     }
-    update_result(short_name, data)
+    update_result(op_name, data)
 
 
 # Set by benchmark/conftest.py pytest_configure for --record json

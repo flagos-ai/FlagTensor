@@ -67,7 +67,19 @@ class BenchConfig:
 def update_result(op, data):
     if not Config.record_json:
         return
-    TEST_RESULTS.setdefault(op, {}).setdefault("details", []).append(data)
+    details = TEST_RESULTS.setdefault(op, {}).setdefault("details", [])
+    # Group by dtype/mode/level: merge result arrays for same (dtype, mode, level)
+    target = (data.get("dtype", ""), data.get("mode", ""), data.get("level", ""))
+    for existing in details:
+        existing_target = (
+            existing.get("dtype", ""),
+            existing.get("mode", ""),
+            existing.get("level", ""),
+        )
+        if existing_target == target:
+            existing.setdefault("result", []).extend(data.get("result", []))
+            return
+    details.append(data)
 
 
 def emit_record_logger(message: str) -> None:
