@@ -33,7 +33,7 @@ from flagtensor.ops.CUTENSOR_OP_SIGMOID import sigmoid
 from flagtensor.ops.CUTENSOR_OP_SIN import sin
 from flagtensor.ops.CUTENSOR_OP_SINH import sinh
 from flagtensor.ops.CUTENSOR_OP_SOFT_PLUS import soft_plus
-from flagtensor.ops.CUTENSOR_OP_SOFT_SIGN import soft_sign
+from flagtensor.ops.CUTENSOR_OP_SOFT_SIGN import soft_sign  # PyTorch decomposes F.softsign→abs+add+div; no aten::softsign dispatch key
 from flagtensor.ops.CUTENSOR_OP_SQRT import sqrt
 from flagtensor.ops.CUTENSOR_OP_SWISH import swish
 from flagtensor.ops.CUTENSOR_OP_TAN import tan
@@ -87,12 +87,14 @@ _FULL_CONFIG = (
     ("silu", swish),           # FlagTensor "swish" → aten "silu"
     ("tan", tan),
     ("tanh", tanh),
-    # soft_sign — no aten equivalent, skipped for now
-    # Binary operators — to be added after verification
-    # ("add.Tensor", add),
-    # ("mul.Tensor", mul),
-    # ("max", max),
-    # ("min", min),
+    # soft_sign — no aten::softsign dispatch key (PyTorch decomposes to abs+add+div); use flagtensor.soft_sign() directly
+    # Binary operators — 6 (element-wise)
+    ("add.Tensor", add),
+    ("mul.Tensor", mul),
+    ("max", max),             # aten::max.other (element-wise)
+    ("maximum", max),         # aten::maximum (broadcasting)
+    ("min", min),             # aten::min.other (element-wise)
+    ("minimum", min),         # aten::minimum (broadcasting)
     # Contraction operators — to be added after verification
     # Sparse operators — to be added after verification
 )
