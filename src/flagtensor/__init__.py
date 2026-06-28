@@ -58,6 +58,57 @@ from flagtensor.runtime.op_registrar import GeneralOpRegistrar  # noqa: E402
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
+# ---------------------------------------------------------------------------
+# Aten-compatible wrappers — bridge dispatcher arg order to FlagTensor signatures
+# ---------------------------------------------------------------------------
+
+
+def _aten_add_tensor(*args, **kwargs):
+    """Wrapper for aten::add.Tensor → flagtensor.add.
+
+    Metax PyTorch 2.8 may pass ``alpha`` as a positional arg rather than keyword-only,
+    so we accept ``*args, **kwargs`` and resolve the three-argument layout heuristically.
+    """
+    alpha = kwargs.pop("alpha", 1)
+
+    if len(args) == 2:
+        x, y = args
+    elif len(args) == 3:
+        if torch.is_tensor(args[0]) and torch.is_tensor(args[1]):
+            x, y, alpha = args
+        elif torch.is_tensor(args[1]) and torch.is_tensor(args[2]):
+            alpha, x, y = args
+        else:
+            raise TypeError(
+                f"unsupported aten add args: {[type(a).__name__ for a in args]}"
+            )
+    else:
+        raise TypeError(f"unsupported aten add arg count: {len(args)}")
+
+    if alpha != 1:
+        y = mul(y, torch.as_tensor(alpha, device=y.device, dtype=y.dtype))
+
+    return add(x, y)
+
+
+def _aten_mul_tensor(*args, **kwargs):
+    """Wrapper for aten::mul.Tensor → flagtensor.mul."""
+    x, y = args[:2]
+    return mul(x, y)
+
+
+def _aten_maximum(*args, **kwargs):
+    """Wrapper for aten::maximum → flagtensor.max (element-wise broadcasting)."""
+    x, y = args[:2]
+    return max(x, y)
+
+
+def _aten_minimum(*args, **kwargs):
+    """Wrapper for aten::minimum → flagtensor.min (element-wise broadcasting)."""
+    x, y = args[:2]
+    return min(x, y)
+
+
 _FULL_CONFIG = (
     # Unary operators — 28
     ("abs", abs),
@@ -89,12 +140,12 @@ _FULL_CONFIG = (
     ("tanh", tanh),
     # soft_sign — no aten::softsign dispatch key (PyTorch decomposes to abs+add+div); use flagtensor.soft_sign() directly
     # Binary operators — 6 (element-wise)
-    ("add.Tensor", add),
-    ("mul.Tensor", mul),
+    ("add.Tensor", _aten_add_tensor),
+    ("mul.Tensor", _aten_mul_tensor),
     ("max", max),             # aten::max.other (element-wise)
-    ("maximum", max),         # aten::maximum (broadcasting)
+    ("maximum", _aten_maximum),  # aten::maximum (broadcasting)
     ("min", min),             # aten::min.other (element-wise)
-    ("minimum", min),         # aten::minimum (broadcasting)
+    ("minimum", _aten_minimum),  # aten::minimum (broadcasting)
     # Contraction operators — to be added after verification
     # Sparse operators — to be added after verification
 )
