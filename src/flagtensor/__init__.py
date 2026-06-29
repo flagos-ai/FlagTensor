@@ -85,27 +85,54 @@ def _aten_add_tensor(*args, **kwargs):
     else:
         raise TypeError(f"unsupported aten add arg count: {len(args)}")
 
+    if not torch.is_tensor(x):
+        x = _ensure_tensor(x, y)
+    if not torch.is_tensor(y):
+        y = _ensure_tensor(y, x)
+
     if alpha != 1:
-        y = mul(y, torch.as_tensor(alpha, device=y.device, dtype=y.dtype))
+        y = mul(y, _ensure_tensor(alpha, y))
 
     return add(x, y)
 
 
+def _ensure_tensor(v, ref):
+    """Promote scalar to tensor on the same device/dtype as *ref*."""
+    if torch.is_tensor(v):
+        return v
+    return torch.as_tensor(v, device=ref.device, dtype=ref.dtype)
+
+
 def _aten_mul_tensor(*args, **kwargs):
-    """Wrapper for aten::mul.Tensor → flagtensor.mul."""
+    """Wrapper for aten::mul.Tensor → flagtensor.mul.
+
+    Handles tensor×scalar / scalar×tensor (MetaX PyTorch may pass raw scalars).
+    """
     x, y = args[:2]
+    if not torch.is_tensor(x):
+        x = _ensure_tensor(x, y)
+    if not torch.is_tensor(y):
+        y = _ensure_tensor(y, x)
     return mul(x, y)
 
 
 def _aten_maximum(*args, **kwargs):
     """Wrapper for aten::maximum → flagtensor.max (element-wise broadcasting)."""
     x, y = args[:2]
+    if not torch.is_tensor(x):
+        x = _ensure_tensor(x, y)
+    if not torch.is_tensor(y):
+        y = _ensure_tensor(y, x)
     return max(x, y)
 
 
 def _aten_minimum(*args, **kwargs):
     """Wrapper for aten::minimum → flagtensor.min (element-wise broadcasting)."""
     x, y = args[:2]
+    if not torch.is_tensor(x):
+        x = _ensure_tensor(x, y)
+    if not torch.is_tensor(y):
+        y = _ensure_tensor(y, x)
     return min(x, y)
 
 
