@@ -121,6 +121,8 @@ class DeviceDetector:
                     key in device_name for key in ("METAX", "MACA", "C500", "C550")
                 ):
                     return "metax"
+                if any(key in device_name for key in ("PPU", "ZW810E", "T-HEAD")):
+                    return "thead"
             except Exception:
                 pass
 
