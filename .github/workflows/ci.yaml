@@ -42,6 +42,8 @@ concurrency:
 
 jobs:
   correctness:
+    # Runs on the self-hosted A100 box registered at org level
+    # (see CONTRIBUTING.md for runner setup / ops commands).
     runs-on: [self-hosted, linux, x86_64, nvidia, a100]
     steps:
       - uses: actions/checkout@v4
