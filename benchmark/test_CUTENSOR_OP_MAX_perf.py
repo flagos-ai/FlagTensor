@@ -18,9 +18,8 @@ import pytest
 import torch
 
 from flagtensor import max
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_MAX_BENCHMARK_SHAPES
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorMax
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_MAX"
@@ -50,7 +49,7 @@ class MaxBenchmark(Benchmark):
     def baseline_impl(self, x, y):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorMax(dtype=x.dtype)
+            baseline = get_baseline_class(OP_NAME)(dtype=x.dtype)
             self.baselines[x.dtype] = baseline
         baseline.prepare(x, y)
         return baseline(x, y)
@@ -70,7 +69,7 @@ class MaxBenchmark(Benchmark):
     def build_baseline_kernel_callable(self, x, y):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorMax(dtype=x.dtype)
+            baseline = get_baseline_class(OP_NAME)(dtype=x.dtype)
             self.baselines[x.dtype] = baseline
         return baseline.build_kernel_callable(x, y)
 
@@ -79,8 +78,8 @@ class MaxBenchmark(Benchmark):
 def test_max_perf():
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not vendor_baseline_available():
+        pytest.skip("baseline unavailable")
 
     bench = MaxBenchmark()
     results = bench.run()

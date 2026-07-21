@@ -20,4 +20,30 @@ vendor_info = VendorInfoBase(
 ARCH_MAP = {'9': 'hopper', '8': 'ampere'}
 CUSTOMIZED_UNUSED_OPS = ()
 
+# ---------------------------------------------------------------------------
+# Baseline availability + factory
+# ---------------------------------------------------------------------------
+# NVIDIA's native baseline is cuTensor (libcutensor.so). It is available iff
+# CUTENSOR_AVAILABLE is True (i.e. cuTensor is installed on the host). When
+# cuTensor is missing, BASELINE_AVAILABLE is False and the benchmark tests
+# are skipped with "baseline unavailable" — preserving the historical
+# NVIDIA behaviour exactly.
+from flagtensor.cutensor import CUTENSOR_AVAILABLE as _CUTENSOR_AVAILABLE
+BASELINE_AVAILABLE = _CUTENSOR_AVAILABLE
+
+
+def get_baseline_class(op_slug: str):
+    """Return the NVIDIA-native baseline class for an operator slug.
+
+    ``op_slug`` is the lowercased operator name with the ``CUTENSOR_OP_``
+    prefix stripped, e.g. ``'abs'``, ``'add'``, ``'contraction'``,
+    ``'elementwise_trinary'``, ``'block_sparse_contraction'``.
+
+    Returns ``None`` if cuTensor is not installed or no baseline is
+    registered for the slug.
+    """
+    from . import baseline as _baseline
+    return _baseline.BASELINE_CLASSES.get(op_slug)
+
+
 __all__ = ['*']

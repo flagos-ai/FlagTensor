@@ -19,9 +19,8 @@ import torch
 import torch.nn.functional as F
 
 from flagtensor import mish
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_MISH_BENCHMARK_SHAPES
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorMish
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_MISH"
@@ -48,7 +47,7 @@ class MishBenchmark(Benchmark):
     def baseline_impl(self, x):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorMish(dtype=x.dtype)
+            baseline = get_baseline_class(OP_NAME)(dtype=x.dtype)
             self.baselines[x.dtype] = baseline
         baseline.prepare(x)
         return baseline(x)
@@ -64,8 +63,8 @@ class MishBenchmark(Benchmark):
 def test_mish_perf():
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not vendor_baseline_available():
+        pytest.skip("baseline unavailable")
 
     bench = MishBenchmark()
     results = bench.run()

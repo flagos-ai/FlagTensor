@@ -18,9 +18,8 @@ import pytest
 import torch
 
 from flagtensor import elementwise_trinary
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_module, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, _get_trinary_executor, elementwise_trinary as cutensor_elementwise_trinary
 from flagtensor.ops.CUTENSOR_OP_TRINARY_GENERIC import _get_triton_trinary_executor
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
@@ -79,7 +78,7 @@ class TrinaryGenericBenchmark(Benchmark):
             )
 
     def baseline_impl(self, a, b, c):
-        return cutensor_elementwise_elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS)
+        return get_baseline_module().elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS)
 
     def triton_impl(self, a, b, c):
         return elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS)
@@ -100,7 +99,7 @@ class TrinaryGenericBenchmark(Benchmark):
     def build_baseline_kernel_callable(self, *args):
         a, b, c = args
         out = torch.empty_like(c)
-        executor = _get_trinary_executor(
+        executor = get_baseline_module()._get_trinary_executor(
             _TRINARY_OP_KWARGS["op_ab"],
             _TRINARY_OP_KWARGS["op_abc"],
             _TRINARY_OP_KWARGS["op_a"],
@@ -156,7 +155,7 @@ class TrinaryGenericHighRankIndexedBenchmark(Benchmark):
             )
 
     def baseline_impl(self, a, b, c):
-        return cutensor_elementwise_elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS, **_INDEXED_MODE_KWARGS)
+        return get_baseline_module().elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS, **_INDEXED_MODE_KWARGS)
 
     def triton_impl(self, a, b, c):
         return elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS, **_INDEXED_MODE_KWARGS)
@@ -181,7 +180,7 @@ class TrinaryGenericHighRankIndexedBenchmark(Benchmark):
     def build_baseline_kernel_callable(self, *args):
         a, b, c = args
         out = torch.empty_like(c)
-        executor = _get_trinary_executor(
+        executor = get_baseline_module()._get_trinary_executor(
             _TRINARY_OP_KWARGS["op_ab"],
             _TRINARY_OP_KWARGS["op_abc"],
             _TRINARY_OP_KWARGS["op_a"],
@@ -210,8 +209,8 @@ class TrinaryGenericHighRankIndexedBenchmark(Benchmark):
 def test_trinary_generic_perf():
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not vendor_baseline_available():
+        pytest.skip("baseline unavailable")
 
     bench = TrinaryGenericBenchmark()
     results = bench.run()
@@ -230,8 +229,8 @@ def test_trinary_generic_perf():
 def test_trinary_generic_kernel_perf():
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not vendor_baseline_available():
+        pytest.skip("baseline unavailable")
 
     bench = TrinaryGenericKernelBenchmark()
     results = bench.run()
@@ -250,8 +249,8 @@ def test_trinary_generic_kernel_perf():
 def test_trinary_generic_high_rank_indexed_perf():
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not vendor_baseline_available():
+        pytest.skip("baseline unavailable")
 
     bench = TrinaryGenericHighRankIndexedBenchmark()
     results = bench.run()

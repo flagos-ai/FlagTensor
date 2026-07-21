@@ -1,0 +1,35 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Vendor-specific tolerances for NVIDIA GPUs (cuTensor baseline).
+#
+# These values are the *benchmark-verify floor*: when the benchmark harness
+# compares the Triton kernel output against the cuTensor baseline output,
+# the effective atol/rtol is max(dtype_default, floor). The dtype defaults
+# come from DEFAULT_CORRECTNESS_TOLERANCES in
+# src/flagtensor/testing/assertions.py (e.g. fp32 → 1.3e-6).
+#
+# NVIDIA keeps the historical 1e-4 floor because cuTensor and the Triton
+# kernel share the same underlying GEMM conventions on NVIDIA hardware,
+# so accumulated rounding differences stay well below 1e-4 on near-zero
+# outputs even for large-K contractions.
+#
+# The accuracy tests in tests/ still enforce the strict per-dtype tolerance
+# (1.3e-6 for fp32); this floor only relaxes the *benchmark* verify path,
+# which only needs to catch gross correctness regressions (wrong dtype,
+# off-by-factor, NaN/Inf).
+
+benchmark_verify_floor:
+  atol: 1.0e-4
+  rtol: 1.0e-4

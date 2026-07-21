@@ -23,6 +23,124 @@ import triton
 
 from flagtensor.cutensor import CUTENSOR_AVAILABLE
 
+
+# ---------------------------------------------------------------------------
+# Vendor-aware baseline loading
+# ---------------------------------------------------------------------------
+# Each vendor ships a ``_<vendor>/baseline.py`` module exposing a
+# ``BASELINE_CLASSES`` dict mapping op-slug → baseline class. The dict is
+# populated by the vendor's chosen baseline implementation:
+#
+#   * NVIDIA → flagtensor.cutensor.CuTensor*  (cuTensor-backed)
+#   * PPU    → flagtensor.torch_baseline.Torch*Baseline  (PyTorch-native,
+#              backed by vendor acblas/acdnn kernels)
+#
+# Adding a new vendor = adding a new _<vendor>/baseline.py module; the
+# benchmark harness below looks up the right class through this function
+# rather than hardcoding the CuTensor prefix anywhere outside _nvidia/.
+_VENDOR_BASELINE_CACHE = {}
+
+
+def _get_vendor_baseline_class(op_slug: str):
+    """Return the active vendor's baseline class for ``op_slug`` or ``None``.
+
+    ``op_slug`` is the lowercased operator name with the ``CUTENSOR_OP_``
+    prefix stripped (e.g. ``'abs'``, ``'add'``, ``'contraction'``,
+    ``'elementwise_trinary'``, ``'block_sparse_contraction'``).
+    """
+    from flagtensor.runtime import device as _device
+    vendor = _device.vendor_name
+    cache_key = (vendor, op_slug)
+    if cache_key in _VENDOR_BASELINE_CACHE:
+        return _VENDOR_BASELINE_CACHE[cache_key]
+
+    cls = None
+    try:
+        from flagtensor.runtime.backend import get_vendor_module
+        vendor_module = get_vendor_module(vendor)
+        factory = getattr(vendor_module, "get_baseline_class", None)
+        if factory is not None:
+            cls = factory(op_slug)
+    except Exception:
+        cls = None
+
+    _VENDOR_BASELINE_CACHE[cache_key] = cls
+    return cls
+
+
+def get_baseline_class(op_name: str):
+    """Public API: return the vendor-specific baseline class for an operator.
+
+    Args:
+        op_name: Operator name as it appears in conf/operators.yaml, e.g.
+            ``'CUTENSOR_OP_ABS'``, ``'Contraction'``, ``'ElementwiseTrinary'``.
+
+    Returns:
+        Baseline class (e.g. ``CuTensorAbs`` on NVIDIA, ``BaselineAbs`` on
+        PPU) or ``None`` if no baseline is registered for this op on the
+        active vendor.
+    """
+    _OP_PREFIX = "CUTENSOR_OP_"
+    if op_name.startswith(_OP_PREFIX):
+        slug = op_name[len(_OP_PREFIX):].lower()
+    else:
+        # CamelCase → snake_case: 'ElementwiseTrinary' → 'elementwise_trinary',
+        # 'BlockSparseContraction' → 'block_sparse_contraction'.
+        import re
+        slug = re.sub(r'(?<!^)(?=[A-Z])', '_', op_name).lower()
+    return _get_vendor_baseline_class(slug)
+
+
+def get_baseline_module():
+    """Public API: return the active vendor's baseline module.
+
+    Used by benchmark tests that need function-style baseline entry points
+    (e.g. ``elementwise_trinary`` and ``_get_trinary_executor`` for the
+    ElementwiseTrinary benchmark). The returned module exposes at least:
+
+        * ``elementwise_trinary(a, b, c, **kwargs)`` — function-style call
+        * ``_get_trinary_executor(op_ab, op_abc, op_a, op_b, op_c, dtype)``
+          — cached executor factory
+
+    On NVIDIA this is a thin re-export of ``flagtensor.cutensor``; on PPU
+    it is implemented in ``_ppu/baseline.py``.
+    """
+    from flagtensor.runtime import device as _device
+    import importlib
+    try:
+        return importlib.import_module(f"flagtensor.runtime.backend._{_device.vendor_name}.baseline")
+    except ImportError:
+        # Fallback to the cutensor module for backward compat on vendors
+        # that have not yet shipped a baseline.py.
+        return importlib.import_module("flagtensor.cutensor")
+
+
+def _vendor_baseline_available() -> bool:
+    """Return True if the active vendor has a usable baseline.
+
+    NVIDIA: True iff cuTensor is installed (CUTENSOR_AVAILABLE).
+    PPU:    True (PyTorch-native baseline is always available on a real
+            PPU device since PyTorch dispatches to acblas/acdnn).
+    """
+    from flagtensor.runtime import device as _device
+    try:
+        from flagtensor.runtime.backend import get_vendor_module
+        vendor_module = get_vendor_module(_device.vendor_name)
+        flag = getattr(vendor_module, "BASELINE_AVAILABLE", None)
+        if flag is not None:
+            return bool(flag)
+    except Exception:
+        pass
+    # Backward-compat: NVIDIA without the vendor module's BASELINE_AVAILABLE
+    # flag falls back to CUTENSOR_AVAILABLE so historical behaviour is kept.
+    return CUTENSOR_AVAILABLE
+
+
+def vendor_baseline_available() -> bool:
+    """Public alias used by benchmark test files for the skip guard."""
+    return _vendor_baseline_available()
+
+
 DEFAULT_DTYPES = [torch.float16, torch.float32]
 DEFAULT_SHAPES = [(2**i,) for i in range(10, 24)]
 DEFAULT_WARMUP = 50
@@ -123,7 +241,10 @@ class Benchmark:
             mode=_env_mode(self.config.mode),
         )
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.cutensor_available = CUTENSOR_AVAILABLE
+        # The benchmark harness checks this flag to decide whether to time
+        # the baseline path at all. It is vendor-aware: True on NVIDIA when
+        # cuTensor is installed, True on PPU (PyTorch-native baseline).
+        self.cutensor_available = _vendor_baseline_available()
         self._auto_kernel_cache = {}
 
     def get_input_iter(self, dtype: torch.dtype) -> Generator:
@@ -145,15 +266,31 @@ class Benchmark:
         only needs to catch major errors, not ulp-level differences caused by
         Tensor Core rounding differences across GPU architectures.
         Accuracy correctness is validated separately by per-operator tests.
+
+        The floor tolerance is vendor-aware AND op-aware: it is loaded from
+        the active vendor's ``tolerances.yaml`` (see
+        ``flagtensor.runtime.backend``). NVIDIA keeps the strict 1e-4 floor;
+        PPU uses 1e-3 vendor-wide and 5e-3 atol for contraction-family ops
+        to accommodate the different GEMM summation order used by the
+        acblas-backed baseline.
         """
         from flagtensor.testing.assertions import get_tolerance as _get_tol
 
         atol, rtol = _get_tol(dtype)
-        # Relax tolerance for benchmark comparison (10x looser than accuracy tests)
-        # because different GPU archs (Ampere vs Hopper) have slightly different
-        # Tensor Core rounding behavior for contractions
-        atol = max(atol, 1e-4)
-        rtol = max(rtol, 1e-4)
+        # Apply vendor+op-specific benchmark-verify floor (see vendor
+        # tolerances.yaml). The op-slug is computed from the benchmark's
+        # op_name so per-op overrides in the yaml take effect automatically.
+        from flagtensor.runtime import device as _device
+        try:
+            from flagtensor.testing.assertions import get_vendor_benchmark_floor as _get_floor
+            floor_atol, floor_rtol = _get_floor(_device.vendor_name, op_slug=self._get_op_slug())
+        except Exception:
+            # Backward-compat fallback: keep the historical 1e-4 floor when the
+            # vendor-specific config is unavailable (e.g. on a brand-new vendor
+            # that has not yet shipped a tolerances.yaml).
+            floor_atol, floor_rtol = 1e-4, 1e-4
+        atol = max(atol, floor_atol)
+        rtol = max(rtol, floor_rtol)
         return torch.allclose(reference, test, atol=atol, rtol=rtol)
 
     def _get_op_slug(self) -> str:
@@ -173,9 +310,7 @@ class Benchmark:
         if baseline is not None:
             return baseline
         slug = self._get_op_slug()
-        cutensor_module = importlib.import_module("flagtensor.cutensor")
-        class_name = f"CuTensor{''.join(part.capitalize() for part in slug.split('_'))}"
-        baseline_cls = getattr(cutensor_module, class_name, None)
+        baseline_cls = _get_vendor_baseline_class(slug)
         if baseline_cls is None:
             return None
         baseline = baseline_cls(dtype=dtype)
