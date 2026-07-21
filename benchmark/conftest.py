@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Pytest configuration for FlagTensor benchmark (performance) tests.
 
 Provides --mode/--level/--warmup/--iter/--record/--dtypes CLI options and
@@ -67,7 +81,19 @@ class BenchConfig:
 def update_result(op, data):
     if not Config.record_json:
         return
-    TEST_RESULTS.setdefault(op, {}).setdefault("details", []).append(data)
+    details = TEST_RESULTS.setdefault(op, {}).setdefault("details", [])
+    # Group by dtype/mode/level: merge result arrays for same (dtype, mode, level)
+    target = (data.get("dtype", ""), data.get("mode", ""), data.get("level", ""))
+    for existing in details:
+        existing_target = (
+            existing.get("dtype", ""),
+            existing.get("mode", ""),
+            existing.get("level", ""),
+        )
+        if existing_target == target:
+            existing.setdefault("result", []).extend(data.get("result", []))
+            return
+    details.append(data)
 
 
 def emit_record_logger(message: str) -> None:

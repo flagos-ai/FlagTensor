@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 import importlib
 import triton
@@ -92,12 +106,12 @@ def _validate_fused_codes(op_a, op_b, op_c, op_ab, op_abc):
     for code in (op_a, op_b, op_c):
         if code not in _FUSED_KERNEL_UNARY_OPS:
             raise AssertionError(
-                f"fused trinary kernel missing branch for unary op code {code}"
+                f"fused elementwise_trinary kernel missing branch for unary op code {code}"
             )
     for code in (op_ab, op_abc):
         if code not in _FUSED_KERNEL_BINARY_OPS:
             raise AssertionError(
-                f"fused trinary kernel missing branch for binary op code {code}"
+                f"fused elementwise_trinary kernel missing branch for binary op code {code}"
             )
 
 
@@ -157,7 +171,7 @@ def _load_unary_impl(name):
 
 def _load_binary_impl(name):
     if name not in _BINARY_IMPLS:
-        raise ValueError(f"unsupported binary operator for trinary composed path: {name}")
+        raise ValueError(f"unsupported binary operator for elementwise_trinary composed path: {name}")
     return _BINARY_IMPLS[name]
 
 
@@ -899,9 +913,9 @@ class _TritonTrinaryExecutor:
         )
         if len(output_shape) > _MAX_SUPPORTED_OUTPUT_RANK:
             raise ValueError(
-                f"trinary output rank {len(output_shape)} exceeds the supported "
+                f"elementwise_trinary output rank {len(output_shape)} exceeds the supported "
                 f"limit ({_MAX_SUPPORTED_OUTPUT_RANK}); reshape inputs or reduce "
-                "the number of distinct modes before calling trinary"
+                "the number of distinct modes before calling elementwise_trinary"
             )
         return {
             "kind": "general",
@@ -1359,9 +1373,9 @@ def _build_direct_plan(a, b, c, mode_a, mode_b, mode_c, mode_d,
     )
     if len(output_shape) > _MAX_SUPPORTED_OUTPUT_RANK:
         raise ValueError(
-            f"trinary output rank {len(output_shape)} exceeds the supported "
+            f"elementwise_trinary output rank {len(output_shape)} exceeds the supported "
             f"limit ({_MAX_SUPPORTED_OUTPUT_RANK}); reshape inputs or reduce "
-            "the number of distinct modes before calling trinary"
+            "the number of distinct modes before calling elementwise_trinary"
         )
     if not _supports_direct_fused_triton_trinary(
         a, b, c, norm_a, norm_b, norm_c, output_modes,
@@ -1387,9 +1401,9 @@ def _build_indexed_plan(a, b, c, mode_a, mode_b, mode_c, mode_d,
 
     if len(output_shape) > _MAX_SUPPORTED_OUTPUT_RANK:
         raise ValueError(
-            f"trinary output rank {len(output_shape)} exceeds the supported "
+            f"elementwise_trinary output rank {len(output_shape)} exceeds the supported "
             f"limit ({_MAX_SUPPORTED_OUTPUT_RANK}); reshape inputs or reduce "
-            "the number of distinct modes before calling trinary"
+            "the number of distinct modes before calling elementwise_trinary"
         )
     if not _supports_indexed_fused_triton_trinary(
         output_shape, output_modes,
@@ -1496,7 +1510,7 @@ def _launch_indexed_plan(plan, a, b, c, output, op_a_code, op_b_code, op_c_code,
     return output
 
 
-def trinary(
+def elementwise_trinary(
     a: torch.Tensor,
     b: torch.Tensor,
     c: torch.Tensor,

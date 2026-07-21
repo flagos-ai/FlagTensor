@@ -1,10 +1,24 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 from flagtensor import BlockSparseTensor
 from flagtensor import BlockSparseTensorContraction
 from flagtensor import BlockSparseTensorDescriptor
-from flagtensor import block_sparse_tensor_contraction
+from flagtensor import block_sparse_contraction
 from flagtensor.config import DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_TEST_SHAPES
 from flagtensor.testing import assert_close
 from tests._legacy_correctness_loader import populate_category_proxy
@@ -73,10 +87,10 @@ def _block_sparse_reference(a, b, c, alpha=1.25, beta=0.5):
     return out
 
 
-@pytest.mark.block_sparse_tensor_contraction
+@pytest.mark.BlockSparseContraction
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("shape_a,shape_b", DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_TEST_SHAPES)
-def test_block_sparse_tensor_contraction_correctness(dtype, shape_a, shape_b):
+def test_block_sparse_contraction_correctness(dtype, shape_a, shape_b):
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
 
@@ -99,7 +113,7 @@ def test_block_sparse_tensor_contraction_correctness(dtype, shape_a, shape_b):
         },
     )
 
-    out = block_sparse_tensor_contraction(a, b, c=c, alpha=1.25, beta=0.5)
+    out = block_sparse_contraction(a, b, c=c, alpha=1.25, beta=0.5)
     expected = _block_sparse_reference(a, b, c, alpha=1.25, beta=0.5).to(dtype)
     assert_close(out, expected, dtype)
 
@@ -109,4 +123,4 @@ def test_block_sparse_tensor_contraction_correctness(dtype, shape_a, shape_b):
     assert_close(out, out_base, dtype)
 
 
-populate_category_proxy(globals(), "sparse", skipped_names=("block_sparse_tensor_contraction",))
+populate_category_proxy(globals(), "sparse", skipped_names=("block_sparse_contraction",))

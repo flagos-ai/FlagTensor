@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from dataclasses import asdict, dataclass
 import importlib
 import os
@@ -398,18 +412,39 @@ def _try_record_benchmark(op_name: str, metric: dict) -> None:
     update_result = getattr(bm, "update_result", None)
     if update_result is None:
         return
-    # Derive short name: "CUTENSOR_OP_ABS" -> "abs"
-    short_name = op_name.replace("CUTENSOR_OP_", "").replace("_perf", "").strip("_").lower()
+
+    # Derive level from bench conftest Config (mirrors flag_gems default: "core")
+    bench_level = getattr(Config, "bench_level", None)
+    if bench_level is not None:
+        level = bench_level.value if hasattr(bench_level, "value") else str(bench_level)
+    else:
+        level = "core"
+
+    shape_tuple = metric.get("shape", ())
+    mode = metric.get("mode", "kernel")
+    dtype = metric.get("dtype", "")
+
     data = {
-        "dtype": metric.get("dtype", ""),
+        "op_name": op_name,
+        "dtype": dtype,
+        "mode": mode,
+        "level": level,
         "result": [{
-            "shape_detail": str(list(metric.get("shape", ()))).replace(" ", ""),
+            "legacy_shape": None,
+            "shape_detail": [list(shape_tuple)],
             "latency_base": metric.get("latency_base", 0) or 0,
             "latency": metric.get("latency", 0) or 0,
+            "gbps_base": None,
+            "gbps": None,
             "speedup": metric.get("speedup", 0) or 0,
+            "accuracy": None,
+            "tflops": None,
+            "utilization": None,
+            "compared_speedup": None,
+            "error_msg": None,
         }],
     }
-    update_result(short_name, data)
+    update_result(op_name, data)
 
 
 # Set by benchmark/conftest.py pytest_configure for --record json

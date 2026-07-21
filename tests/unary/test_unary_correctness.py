@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -87,7 +101,7 @@ from flagtensor.cutensor import CuTensorTanh
 from flagtensor.testing import assert_close
 
 
-@pytest.mark.abs
+@pytest.mark.CUTENSOR_OP_ABS
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ABS_TEST_SHAPES)
 def test_abs_correctness(dtype, shape):
@@ -100,7 +114,7 @@ def test_abs_correctness(dtype, shape):
     assert_close(y, expected, dtype)
 
 
-@pytest.mark.acos
+@pytest.mark.CUTENSOR_OP_ACOS
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ACOS_TEST_SHAPES)
 def test_acos_correctness(dtype, shape):
@@ -119,7 +133,7 @@ def test_acos_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.identity
+@pytest.mark.CUTENSOR_OP_IDENTITY
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_IDENTITY_TEST_SHAPES)
 def test_identity_correctness(dtype, shape):
@@ -137,7 +151,7 @@ def test_identity_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.neg
+@pytest.mark.CUTENSOR_OP_NEG
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_NEG_TEST_SHAPES)
 def test_neg_correctness(dtype, shape):
@@ -156,7 +170,7 @@ def test_neg_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.relu
+@pytest.mark.CUTENSOR_OP_RELU
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_RELU_TEST_SHAPES)
 def test_relu_correctness(dtype, shape):
@@ -175,7 +189,7 @@ def test_relu_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.ceil
+@pytest.mark.CUTENSOR_OP_CEIL
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_CEIL_TEST_SHAPES)
 def test_ceil_correctness(dtype, shape):
@@ -194,7 +208,7 @@ def test_ceil_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.floor
+@pytest.mark.CUTENSOR_OP_FLOOR
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_FLOOR_TEST_SHAPES)
 def test_floor_correctness(dtype, shape):
@@ -213,7 +227,7 @@ def test_floor_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.log
+@pytest.mark.CUTENSOR_OP_LOG
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_LOG_TEST_SHAPES)
 def test_log_correctness(dtype, shape):
@@ -232,7 +246,7 @@ def test_log_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.sqrt
+@pytest.mark.CUTENSOR_OP_SQRT
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SQRT_TEST_SHAPES)
 def test_sqrt_correctness(dtype, shape):
@@ -251,7 +265,7 @@ def test_sqrt_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.sin
+@pytest.mark.CUTENSOR_OP_SIN
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SIN_TEST_SHAPES)
 def test_sin_correctness(dtype, shape):
@@ -270,7 +284,7 @@ def test_sin_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.cos
+@pytest.mark.CUTENSOR_OP_COS
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_COS_TEST_SHAPES)
 def test_cos_correctness(dtype, shape):
@@ -289,7 +303,7 @@ def test_cos_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.tan
+@pytest.mark.CUTENSOR_OP_TAN
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_TAN_TEST_SHAPES)
 def test_tan_correctness(dtype, shape):
@@ -308,7 +322,7 @@ def test_tan_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.sinh
+@pytest.mark.CUTENSOR_OP_SINH
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SINH_TEST_SHAPES)
 def test_sinh_correctness(dtype, shape):
@@ -327,7 +341,7 @@ def test_sinh_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.cosh
+@pytest.mark.CUTENSOR_OP_COSH
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_COSH_TEST_SHAPES)
 def test_cosh_correctness(dtype, shape):
@@ -346,7 +360,7 @@ def test_cosh_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.tanh
+@pytest.mark.CUTENSOR_OP_TANH
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_TANH_TEST_SHAPES)
 def test_tanh_correctness(dtype, shape):
@@ -365,7 +379,7 @@ def test_tanh_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.asin
+@pytest.mark.CUTENSOR_OP_ASIN
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ASIN_TEST_SHAPES)
 def test_asin_correctness(dtype, shape):
@@ -384,7 +398,7 @@ def test_asin_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.atan
+@pytest.mark.CUTENSOR_OP_ATAN
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ATAN_TEST_SHAPES)
 def test_atan_correctness(dtype, shape):
@@ -403,7 +417,7 @@ def test_atan_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.sigmoid
+@pytest.mark.CUTENSOR_OP_SIGMOID
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SIGMOID_TEST_SHAPES)
 def test_sigmoid_correctness(dtype, shape):
@@ -422,7 +436,7 @@ def test_sigmoid_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.mish
+@pytest.mark.CUTENSOR_OP_MISH
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_MISH_TEST_SHAPES)
 def test_mish_correctness(dtype, shape):
@@ -443,7 +457,7 @@ def test_mish_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.asinh
+@pytest.mark.CUTENSOR_OP_ASINH
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ASINH_TEST_SHAPES)
 def test_asinh_correctness(dtype, shape):
@@ -462,7 +476,7 @@ def test_asinh_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.acosh
+@pytest.mark.CUTENSOR_OP_ACOSH
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ACOSH_TEST_SHAPES)
 def test_acosh_correctness(dtype, shape):
@@ -481,7 +495,7 @@ def test_acosh_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.atanh
+@pytest.mark.CUTENSOR_OP_ATANH
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ATANH_TEST_SHAPES)
 def test_atanh_correctness(dtype, shape):
@@ -500,7 +514,7 @@ def test_atanh_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.soft_plus
+@pytest.mark.CUTENSOR_OP_SOFT_PLUS
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SOFT_PLUS_TEST_SHAPES)
 def test_soft_plus_correctness(dtype, shape):
@@ -521,7 +535,7 @@ def test_soft_plus_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.soft_sign
+@pytest.mark.CUTENSOR_OP_SOFT_SIGN
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SOFT_SIGN_TEST_SHAPES)
 def test_soft_sign_correctness(dtype, shape):
@@ -540,7 +554,7 @@ def test_soft_sign_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.swish
+@pytest.mark.CUTENSOR_OP_SWISH
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SWISH_TEST_SHAPES)
 def test_swish_correctness(dtype, shape):
@@ -559,7 +573,7 @@ def test_swish_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.rcp
+@pytest.mark.CUTENSOR_OP_RCP
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_RCP_TEST_SHAPES)
 def test_rcp_correctness(dtype, shape):
@@ -583,7 +597,7 @@ def test_rcp_correctness(dtype, shape):
         assert_close(y, y_base, dtype)
 
 
-@pytest.mark.conj
+@pytest.mark.CUTENSOR_OP_CONJ
 @pytest.mark.parametrize("dtype", DEFAULT_CONJ_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_CONJ_TEST_SHAPES)
 def test_conj_correctness(dtype, shape):

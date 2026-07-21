@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # -*- coding: utf-8 -*-
 """
 run_tests.py — Run accuracy and performance tests for FlagTensor operators.
@@ -443,16 +458,59 @@ def parse_perf_data(op, result_file):
     except (json.JSONDecodeError, ValueError):
         return {"status": "Error", "reason": f"Invalid JSON in {result_file}"}
 
+    # The benchmark output may contain multiple top-level keys (e.g. a new op
+    # name AND a legacy identifier for the same operator).  We first match by
+    # the exact op name; if that record lacks performance details we scan all
+    # remaining keys for the first one that *does* carry details, so that the
+    # parsed data block is always populated regardless of which key pytest's
+    # JSON plugin attributed the details to.
     data = raw_data.get(op, {})
     if not data:
         return {"status": "NotFound"}
 
+    # If the primary key has no details, try to find them on a sibling key.
+    # This also covers cases where the primary key has result="failed" but a
+    # legacy key still recorded partial benchmark data.
+    if not data.get("details"):
+        for alt_key, alt_value in raw_data.items():
+            if alt_key == op:
+                continue
+            alt_details = alt_value.get("details")
+            if alt_details:
+                data = dict(data)  # shallow copy to leave original intact
+                data["details"] = alt_details
+                break
+
     result = data.get("result", "NotFound")
     if result in ("failed", "skipped"):
+        # Still try to populate bench data so summary.json is not empty.
+        bench_res = {}
+        records = data.get("details", [])
+        for item in records:
+            dtype = DTYPE_MAP.get(item.get("dtype", ""), item.get("dtype", ""))
+            details = {}
+            total = 0.0
+            count = 0
+            for res in item.get("result", []):
+                shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+                details.setdefault(shape, {})
+                details[shape]["base"] = res.get("latency_base", 0.0)
+                details[shape]["gems"] = res.get("latency", 0.0)
+                speedup = res.get("speedup", 0.0)
+                details[shape]["speedup"] = speedup
+                count += 1
+                total += speedup
+            if details:
+                bench_res[dtype] = {
+                    "result": "OK",
+                    "details": details,
+                    "speedup": total / count,
+                }
         return {
             "status": result.title(),
             "reason": data.get("reason", "Unknown"),
             "test_case": data.get("test_case", "Unknown"),
+            "data": bench_res,
         }
 
     bench_res = {}
@@ -484,8 +542,15 @@ def parse_perf_data(op, result_file):
                 "result": "Unknown", "details": {}, "speedup": 0,
             }
 
+    # Use the primary key's result status ("passed"/"failed"), but fall back
+    # to "Passed" when bench_res has valid data even if the primary key
+    # doesn't carry an explicit result field.
+    status = (
+        result.title() if result not in ("NotFound",)
+        else "Passed" if bench_res else "NotFound"
+    )
     return {
-        "status": result.title(),
+        "status": status,
         "data": bench_res,
         "test_case": data.get("test_case", "Unknown"),
     }

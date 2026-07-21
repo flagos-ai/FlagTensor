@@ -1,18 +1,32 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 ops:
-- name: abs
+- name: CUTENSOR_OP_ABS
   category: unary
   python_api: flagtensor.abs
   impl_file: src/flagtensor/ops/CUTENSOR_OP_ABS.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: abs
-  benchmark_mark: abs
+  correctness_mark: CUTENSOR_OP_ABS
+  benchmark_mark: CUTENSOR_OP_ABS
   benchmark_modes:
   - operator
   status: stable
-  id: abs
+  id: CUTENSOR_OP_ABS
   for:
-  - abs
+  - CUTENSOR_OP_ABS
   labels:
   - cuTensor
   - pointwise
@@ -21,22 +35,22 @@ ops:
   stages:
   - stable: '1.0'
   description: Computes the absolute value of each element in input.
-- name: acos
+- name: CUTENSOR_OP_ACOS
   category: unary
   python_api: flagtensor.acos
   impl_file: src/flagtensor/ops/CUTENSOR_OP_ACOS.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: acos
-  benchmark_mark: acos
+  correctness_mark: CUTENSOR_OP_ACOS
+  benchmark_mark: CUTENSOR_OP_ACOS
   benchmark_modes:
   - kernel
   - operator
   - wrapper
   status: stable
-  id: acos
+  id: CUTENSOR_OP_ACOS
   for:
-  - acos
+  - CUTENSOR_OP_ACOS
   labels:
   - cuTensor
   - pointwise
@@ -45,20 +59,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the arccosine (in radians) of each element in input.
-- name: acosh
+- name: CUTENSOR_OP_ACOSH
   category: unary
   python_api: flagtensor.acosh
   impl_file: src/flagtensor/ops/CUTENSOR_OP_ACOSH.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: acosh
-  benchmark_mark: acosh
+  correctness_mark: CUTENSOR_OP_ACOSH
+  benchmark_mark: CUTENSOR_OP_ACOSH
   benchmark_modes:
   - operator
   status: stable
-  id: acosh
+  id: CUTENSOR_OP_ACOSH
   for:
-  - acosh
+  - CUTENSOR_OP_ACOSH
   labels:
   - cuTensor
   - pointwise
@@ -67,20 +81,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the inverse hyperbolic cosine of each element in input.
-- name: add
+- name: CUTENSOR_OP_ADD
   category: binary
   python_api: flagtensor.add
   impl_file: src/flagtensor/ops/CUTENSOR_OP_ADD.py
   correctness_test: tests/binary/test_binary_correctness.py
   benchmark_test: benchmark/test_binary_perf.py
-  correctness_mark: add
-  benchmark_mark: add
+  correctness_mark: CUTENSOR_OP_ADD
+  benchmark_mark: CUTENSOR_OP_ADD
   benchmark_modes:
   - operator
   status: stable
-  id: add
+  id: CUTENSOR_OP_ADD
   for:
-  - add
+  - CUTENSOR_OP_ADD
   labels:
   - cuTensor
   - pointwise
@@ -89,20 +103,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Adds other, scaled by alpha, to input element-wise.
-- name: asin
+- name: CUTENSOR_OP_ASIN
   category: unary
   python_api: flagtensor.asin
   impl_file: src/flagtensor/ops/CUTENSOR_OP_ASIN.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: asin
-  benchmark_mark: asin
+  correctness_mark: CUTENSOR_OP_ASIN
+  benchmark_mark: CUTENSOR_OP_ASIN
   benchmark_modes:
   - operator
   status: stable
-  id: asin
+  id: CUTENSOR_OP_ASIN
   for:
-  - asin
+  - CUTENSOR_OP_ASIN
   labels:
   - cuTensor
   - pointwise
@@ -111,20 +125,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the arcsine (in radians) of each element in input.
-- name: asinh
+- name: CUTENSOR_OP_ASINH
   category: unary
   python_api: flagtensor.asinh
   impl_file: src/flagtensor/ops/CUTENSOR_OP_ASINH.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: asinh
-  benchmark_mark: asinh
+  correctness_mark: CUTENSOR_OP_ASINH
+  benchmark_mark: CUTENSOR_OP_ASINH
   benchmark_modes:
   - operator
   status: stable
-  id: asinh
+  id: CUTENSOR_OP_ASINH
   for:
-  - asinh
+  - CUTENSOR_OP_ASINH
   labels:
   - cuTensor
   - pointwise
@@ -133,20 +147,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the inverse hyperbolic sine of each element in input.
-- name: atan
+- name: CUTENSOR_OP_ATAN
   category: unary
   python_api: flagtensor.atan
   impl_file: src/flagtensor/ops/CUTENSOR_OP_ATAN.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: atan
-  benchmark_mark: atan
+  correctness_mark: CUTENSOR_OP_ATAN
+  benchmark_mark: CUTENSOR_OP_ATAN
   benchmark_modes:
   - operator
   status: stable
-  id: atan
+  id: CUTENSOR_OP_ATAN
   for:
-  - atan
+  - CUTENSOR_OP_ATAN
   labels:
   - cuTensor
   - pointwise
@@ -155,20 +169,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the arctangent of the elements (in radians) in input.
-- name: atanh
+- name: CUTENSOR_OP_ATANH
   category: unary
   python_api: flagtensor.atanh
   impl_file: src/flagtensor/ops/CUTENSOR_OP_ATANH.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: atanh
-  benchmark_mark: atanh
+  correctness_mark: CUTENSOR_OP_ATANH
+  benchmark_mark: CUTENSOR_OP_ATANH
   benchmark_modes:
   - operator
   status: stable
-  id: atanh
+  id: CUTENSOR_OP_ATANH
   for:
-  - atanh
+  - CUTENSOR_OP_ATANH
   labels:
   - cuTensor
   - pointwise
@@ -177,20 +191,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the inverse hyperbolic tangent of each element in input.
-- name: block_sparse_tensor_contraction
+- name: BlockSparseContraction
   category: sparse
-  python_api: flagtensor.block_sparse_tensor_contraction
+  python_api: flagtensor.block_sparse_contraction
   impl_file: src/flagtensor/ops/CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION.py
   correctness_test: tests/sparse/test_sparse_correctness.py
   benchmark_test: benchmark/test_sparse_perf.py
-  correctness_mark: block_sparse_tensor_contraction
-  benchmark_mark: block_sparse_tensor_contraction
+  correctness_mark: BlockSparseContraction
+  benchmark_mark: BlockSparseContraction
   benchmark_modes:
   - operator
   status: experimental
-  id: block_sparse_tensor_contraction
+  id: BlockSparseContraction
   for:
-  - block_sparse_tensor_contraction
+  - BlockSparseContraction
   labels:
   - cuTensor
   - Sparse
@@ -199,20 +213,20 @@ ops:
   stages:
   - experimental: '0.1'
   description: Performs block-sparse tensor contraction via cuTensor.
-- name: ceil
+- name: CUTENSOR_OP_CEIL
   category: unary
   python_api: flagtensor.ceil
   impl_file: src/flagtensor/ops/CUTENSOR_OP_CEIL.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: ceil
-  benchmark_mark: ceil
+  correctness_mark: CUTENSOR_OP_CEIL
+  benchmark_mark: CUTENSOR_OP_CEIL
   benchmark_modes:
   - operator
   status: stable
-  id: ceil
+  id: CUTENSOR_OP_CEIL
   for:
-  - ceil
+  - CUTENSOR_OP_CEIL
   labels:
   - cuTensor
   - pointwise
@@ -221,20 +235,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the ceil of the elements of input.
-- name: conj
+- name: CUTENSOR_OP_CONJ
   category: unary
   python_api: flagtensor.conj
   impl_file: src/flagtensor/ops/CUTENSOR_OP_CONJ.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: conj
-  benchmark_mark: conj
+  correctness_mark: CUTENSOR_OP_CONJ
+  benchmark_mark: CUTENSOR_OP_CONJ
   benchmark_modes:
   - operator
   status: stable
-  id: conj
+  id: CUTENSOR_OP_CONJ
   for:
-  - conj
+  - CUTENSOR_OP_CONJ
   labels:
   - cuTensor
   - pointwise
@@ -243,20 +257,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Computes the element-wise conjugate of the given input tensor.
-- name: cos
+- name: CUTENSOR_OP_COS
   category: unary
   python_api: flagtensor.cos
   impl_file: src/flagtensor/ops/CUTENSOR_OP_COS.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: cos
-  benchmark_mark: cos
+  correctness_mark: CUTENSOR_OP_COS
+  benchmark_mark: CUTENSOR_OP_COS
   benchmark_modes:
   - operator
   status: stable
-  id: cos
+  id: CUTENSOR_OP_COS
   for:
-  - cos
+  - CUTENSOR_OP_COS
   labels:
   - cuTensor
   - pointwise
@@ -265,20 +279,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the cosine of the elements of input given in radians.
-- name: cosh
+- name: CUTENSOR_OP_COSH
   category: unary
   python_api: flagtensor.cosh
   impl_file: src/flagtensor/ops/CUTENSOR_OP_COSH.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: cosh
-  benchmark_mark: cosh
+  correctness_mark: CUTENSOR_OP_COSH
+  benchmark_mark: CUTENSOR_OP_COSH
   benchmark_modes:
   - operator
   status: stable
-  id: cosh
+  id: CUTENSOR_OP_COSH
   for:
-  - cosh
+  - CUTENSOR_OP_COSH
   labels:
   - cuTensor
   - pointwise
@@ -287,20 +301,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the hyperbolic cosine of the elements of input.
-- name: exp
+- name: CUTENSOR_OP_EXP
   category: unary
   python_api: flagtensor.exp
   impl_file: src/flagtensor/ops/CUTENSOR_OP_EXP.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: exp
-  benchmark_mark: exp
+  correctness_mark: CUTENSOR_OP_EXP
+  benchmark_mark: CUTENSOR_OP_EXP
   benchmark_modes:
   - operator
   status: stable
-  id: exp
+  id: CUTENSOR_OP_EXP
   for:
-  - exp
+  - CUTENSOR_OP_EXP
   labels:
   - cuTensor
   - pointwise
@@ -309,20 +323,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the exponential of the elements of input.
-- name: floor
+- name: CUTENSOR_OP_FLOOR
   category: unary
   python_api: flagtensor.floor
   impl_file: src/flagtensor/ops/CUTENSOR_OP_FLOOR.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: floor
-  benchmark_mark: floor
+  correctness_mark: CUTENSOR_OP_FLOOR
+  benchmark_mark: CUTENSOR_OP_FLOOR
   benchmark_modes:
   - operator
   status: stable
-  id: floor
+  id: CUTENSOR_OP_FLOOR
   for:
-  - floor
+  - CUTENSOR_OP_FLOOR
   labels:
   - cuTensor
   - pointwise
@@ -331,21 +345,21 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the floor of the elements of input.
-- name: gett
+- name: Contraction
   category: contraction
-  python_api: flagtensor.gett
+  python_api: flagtensor.contraction
   impl_file: src/flagtensor/ops/CUTENSOR_OP_GETT.py
   correctness_test: tests/contraction/test_contraction_correctness.py
   benchmark_test: benchmark/test_contraction_perf.py
-  correctness_mark: gett
-  benchmark_mark: gett
+  correctness_mark: Contraction
+  benchmark_mark: Contraction
   benchmark_modes:
   - kernel
   - operator
   status: stable
-  id: gett
+  id: Contraction
   for:
-  - gett
+  - Contraction
   labels:
   - cuTensor
   - BLAS
@@ -354,20 +368,20 @@ ops:
   stages:
   - stable: '1.0'
   description: 'General tensor contraction: a summation over pairs of indices.'
-- name: identity
+- name: CUTENSOR_OP_IDENTITY
   category: unary
   python_api: flagtensor.identity
   impl_file: src/flagtensor/ops/CUTENSOR_OP_IDENTITY.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: identity
-  benchmark_mark: identity
+  correctness_mark: CUTENSOR_OP_IDENTITY
+  benchmark_mark: CUTENSOR_OP_IDENTITY
   benchmark_modes:
   - operator
   status: stable
-  id: identity
+  id: CUTENSOR_OP_IDENTITY
   for:
-  - identity
+  - CUTENSOR_OP_IDENTITY
   labels:
   - cuTensor
   - pointwise
@@ -376,20 +390,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns the input tensor unchanged (passthrough or copy).
-- name: log
+- name: CUTENSOR_OP_LOG
   category: unary
   python_api: flagtensor.log
   impl_file: src/flagtensor/ops/CUTENSOR_OP_LOG.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: log
-  benchmark_mark: log
+  correctness_mark: CUTENSOR_OP_LOG
+  benchmark_mark: CUTENSOR_OP_LOG
   benchmark_modes:
   - operator
   status: stable
-  id: log
+  id: CUTENSOR_OP_LOG
   for:
-  - log
+  - CUTENSOR_OP_LOG
   labels:
   - cuTensor
   - pointwise
@@ -398,20 +412,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the natural logarithm of the elements of input.
-- name: max
+- name: CUTENSOR_OP_MAX
   category: binary
   python_api: flagtensor.max
   impl_file: src/flagtensor/ops/CUTENSOR_OP_MAX.py
   correctness_test: tests/binary/test_binary_correctness.py
   benchmark_test: benchmark/test_binary_perf.py
-  correctness_mark: max
-  benchmark_mark: max
+  correctness_mark: CUTENSOR_OP_MAX
+  benchmark_mark: CUTENSOR_OP_MAX
   benchmark_modes:
   - operator
   status: stable
-  id: max
+  id: CUTENSOR_OP_MAX
   for:
-  - max
+  - CUTENSOR_OP_MAX
   labels:
   - cuTensor
   - pointwise
@@ -420,20 +434,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Computes the element-wise maximum of input and other.
-- name: min
+- name: CUTENSOR_OP_MIN
   category: binary
   python_api: flagtensor.min
   impl_file: src/flagtensor/ops/CUTENSOR_OP_MIN.py
   correctness_test: tests/binary/test_binary_correctness.py
   benchmark_test: benchmark/test_binary_perf.py
-  correctness_mark: min
-  benchmark_mark: min
+  correctness_mark: CUTENSOR_OP_MIN
+  benchmark_mark: CUTENSOR_OP_MIN
   benchmark_modes:
   - operator
   status: stable
-  id: min
+  id: CUTENSOR_OP_MIN
   for:
-  - min
+  - CUTENSOR_OP_MIN
   labels:
   - cuTensor
   - pointwise
@@ -442,20 +456,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Computes the element-wise minimum of input and other.
-- name: mish
+- name: CUTENSOR_OP_MISH
   category: unary
   python_api: flagtensor.mish
   impl_file: src/flagtensor/ops/CUTENSOR_OP_MISH.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: mish
-  benchmark_mark: mish
+  correctness_mark: CUTENSOR_OP_MISH
+  benchmark_mark: CUTENSOR_OP_MISH
   benchmark_modes:
   - operator
   status: stable
-  id: mish
+  id: CUTENSOR_OP_MISH
   for:
-  - mish
+  - CUTENSOR_OP_MISH
   labels:
   - cuTensor
   - pointwise
@@ -464,20 +478,20 @@ ops:
   stages:
   - stable: '1.0'
   description: 'Applies the Mish activation function element-wise: x * tanh(softplus(x)).'
-- name: mul
+- name: CUTENSOR_OP_MUL
   category: binary
   python_api: flagtensor.mul
   impl_file: src/flagtensor/ops/CUTENSOR_OP_MUL.py
   correctness_test: tests/binary/test_binary_correctness.py
   benchmark_test: benchmark/test_binary_perf.py
-  correctness_mark: mul
-  benchmark_mark: mul
+  correctness_mark: CUTENSOR_OP_MUL
+  benchmark_mark: CUTENSOR_OP_MUL
   benchmark_modes:
   - operator
   status: stable
-  id: mul
+  id: CUTENSOR_OP_MUL
   for:
-  - mul
+  - CUTENSOR_OP_MUL
   labels:
   - cuTensor
   - pointwise
@@ -486,20 +500,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Multiplies input by other element-wise.
-- name: neg
+- name: CUTENSOR_OP_NEG
   category: unary
   python_api: flagtensor.neg
   impl_file: src/flagtensor/ops/CUTENSOR_OP_NEG.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: neg
-  benchmark_mark: neg
+  correctness_mark: CUTENSOR_OP_NEG
+  benchmark_mark: CUTENSOR_OP_NEG
   benchmark_modes:
   - operator
   status: stable
-  id: neg
+  id: CUTENSOR_OP_NEG
   for:
-  - neg
+  - CUTENSOR_OP_NEG
   labels:
   - cuTensor
   - pointwise
@@ -508,20 +522,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the negative of the elements of input.
-- name: rcp
+- name: CUTENSOR_OP_RCP
   category: unary
   python_api: flagtensor.rcp
   impl_file: src/flagtensor/ops/CUTENSOR_OP_RCP.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: rcp
-  benchmark_mark: rcp
+  correctness_mark: CUTENSOR_OP_RCP
+  benchmark_mark: CUTENSOR_OP_RCP
   benchmark_modes:
   - operator
   status: stable
-  id: rcp
+  id: CUTENSOR_OP_RCP
   for:
-  - rcp
+  - CUTENSOR_OP_RCP
   labels:
   - cuTensor
   - pointwise
@@ -530,20 +544,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Computes the reciprocal (1/x) of each element of input.
-- name: relu
+- name: CUTENSOR_OP_RELU
   category: unary
   python_api: flagtensor.relu
   impl_file: src/flagtensor/ops/CUTENSOR_OP_RELU.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: relu
-  benchmark_mark: relu
+  correctness_mark: CUTENSOR_OP_RELU
+  benchmark_mark: CUTENSOR_OP_RELU
   benchmark_modes:
   - operator
   status: stable
-  id: relu
+  id: CUTENSOR_OP_RELU
   for:
-  - relu
+  - CUTENSOR_OP_RELU
   labels:
   - cuTensor
   - pointwise
@@ -552,20 +566,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Applies the Rectified Linear Unit function element-wise.
-- name: sigmoid
+- name: CUTENSOR_OP_SIGMOID
   category: unary
   python_api: flagtensor.sigmoid
   impl_file: src/flagtensor/ops/CUTENSOR_OP_SIGMOID.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: sigmoid
-  benchmark_mark: sigmoid
+  correctness_mark: CUTENSOR_OP_SIGMOID
+  benchmark_mark: CUTENSOR_OP_SIGMOID
   benchmark_modes:
   - operator
   status: stable
-  id: sigmoid
+  id: CUTENSOR_OP_SIGMOID
   for:
-  - sigmoid
+  - CUTENSOR_OP_SIGMOID
   labels:
   - cuTensor
   - pointwise
@@ -574,20 +588,20 @@ ops:
   stages:
   - stable: '1.0'
   description: 'Applies the Sigmoid function element-wise: 1 / (1 + exp(-x)).'
-- name: sin
+- name: CUTENSOR_OP_SIN
   category: unary
   python_api: flagtensor.sin
   impl_file: src/flagtensor/ops/CUTENSOR_OP_SIN.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: sin
-  benchmark_mark: sin
+  correctness_mark: CUTENSOR_OP_SIN
+  benchmark_mark: CUTENSOR_OP_SIN
   benchmark_modes:
   - operator
   status: stable
-  id: sin
+  id: CUTENSOR_OP_SIN
   for:
-  - sin
+  - CUTENSOR_OP_SIN
   labels:
   - cuTensor
   - pointwise
@@ -596,20 +610,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the sine of the elements of input given in radians.
-- name: sinh
+- name: CUTENSOR_OP_SINH
   category: unary
   python_api: flagtensor.sinh
   impl_file: src/flagtensor/ops/CUTENSOR_OP_SINH.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: sinh
-  benchmark_mark: sinh
+  correctness_mark: CUTENSOR_OP_SINH
+  benchmark_mark: CUTENSOR_OP_SINH
   benchmark_modes:
   - operator
   status: stable
-  id: sinh
+  id: CUTENSOR_OP_SINH
   for:
-  - sinh
+  - CUTENSOR_OP_SINH
   labels:
   - cuTensor
   - pointwise
@@ -618,20 +632,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the hyperbolic sine of the elements of input.
-- name: soft_plus
+- name: CUTENSOR_OP_SOFT_PLUS
   category: unary
   python_api: flagtensor.soft_plus
   impl_file: src/flagtensor/ops/CUTENSOR_OP_SOFT_PLUS.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: soft_plus
-  benchmark_mark: soft_plus
+  correctness_mark: CUTENSOR_OP_SOFT_PLUS
+  benchmark_mark: CUTENSOR_OP_SOFT_PLUS
   benchmark_modes:
   - operator
   status: stable
-  id: soft_plus
+  id: CUTENSOR_OP_SOFT_PLUS
   for:
-  - soft_plus
+  - CUTENSOR_OP_SOFT_PLUS
   labels:
   - cuTensor
   - pointwise
@@ -640,20 +654,20 @@ ops:
   stages:
   - stable: '1.0'
   description: 'Applies the Softplus function element-wise: log(1 + exp(x)).'
-- name: soft_sign
+- name: CUTENSOR_OP_SOFT_SIGN
   category: unary
   python_api: flagtensor.soft_sign
   impl_file: src/flagtensor/ops/CUTENSOR_OP_SOFT_SIGN.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: soft_sign
-  benchmark_mark: soft_sign
+  correctness_mark: CUTENSOR_OP_SOFT_SIGN
+  benchmark_mark: CUTENSOR_OP_SOFT_SIGN
   benchmark_modes:
   - operator
   status: stable
-  id: soft_sign
+  id: CUTENSOR_OP_SOFT_SIGN
   for:
-  - soft_sign
+  - CUTENSOR_OP_SOFT_SIGN
   labels:
   - cuTensor
   - pointwise
@@ -662,20 +676,20 @@ ops:
   stages:
   - stable: '1.0'
   description: 'Applies the Softsign function element-wise: x / (1 + abs(x)).'
-- name: sqrt
+- name: CUTENSOR_OP_SQRT
   category: unary
   python_api: flagtensor.sqrt
   impl_file: src/flagtensor/ops/CUTENSOR_OP_SQRT.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: sqrt
-  benchmark_mark: sqrt
+  correctness_mark: CUTENSOR_OP_SQRT
+  benchmark_mark: CUTENSOR_OP_SQRT
   benchmark_modes:
   - operator
   status: stable
-  id: sqrt
+  id: CUTENSOR_OP_SQRT
   for:
-  - sqrt
+  - CUTENSOR_OP_SQRT
   labels:
   - cuTensor
   - pointwise
@@ -684,20 +698,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the square root of the elements of input.
-- name: swish
+- name: CUTENSOR_OP_SWISH
   category: unary
   python_api: flagtensor.swish
   impl_file: src/flagtensor/ops/CUTENSOR_OP_SWISH.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: swish
-  benchmark_mark: swish
+  correctness_mark: CUTENSOR_OP_SWISH
+  benchmark_mark: CUTENSOR_OP_SWISH
   benchmark_modes:
   - operator
   status: stable
-  id: swish
+  id: CUTENSOR_OP_SWISH
   for:
-  - swish
+  - CUTENSOR_OP_SWISH
   labels:
   - cuTensor
   - pointwise
@@ -706,20 +720,20 @@ ops:
   stages:
   - stable: '1.0'
   description: 'Applies the Swish (SiLU) activation function: x * sigmoid(x).'
-- name: tan
+- name: CUTENSOR_OP_TAN
   category: unary
   python_api: flagtensor.tan
   impl_file: src/flagtensor/ops/CUTENSOR_OP_TAN.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: tan
-  benchmark_mark: tan
+  correctness_mark: CUTENSOR_OP_TAN
+  benchmark_mark: CUTENSOR_OP_TAN
   benchmark_modes:
   - operator
   status: stable
-  id: tan
+  id: CUTENSOR_OP_TAN
   for:
-  - tan
+  - CUTENSOR_OP_TAN
   labels:
   - cuTensor
   - pointwise
@@ -728,20 +742,20 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the tangent of the elements of input given in radians.
-- name: tanh
+- name: CUTENSOR_OP_TANH
   category: unary
   python_api: flagtensor.tanh
   impl_file: src/flagtensor/ops/CUTENSOR_OP_TANH.py
   correctness_test: tests/unary/test_unary_correctness.py
   benchmark_test: benchmark/test_unary_perf.py
-  correctness_mark: tanh
-  benchmark_mark: tanh
+  correctness_mark: CUTENSOR_OP_TANH
+  benchmark_mark: CUTENSOR_OP_TANH
   benchmark_modes:
   - operator
   status: stable
-  id: tanh
+  id: CUTENSOR_OP_TANH
   for:
-  - tanh
+  - CUTENSOR_OP_TANH
   labels:
   - cuTensor
   - pointwise
@@ -750,21 +764,21 @@ ops:
   stages:
   - stable: '1.0'
   description: Returns a new tensor with the hyperbolic tangent of the elements of input.
-- name: tensor_contraction_trinary
+- name: ContractionTrinary
   category: contraction
-  python_api: flagtensor.tensor_contraction_trinary
+  python_api: flagtensor.contraction_trinary
   impl_file: src/flagtensor/ops/CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY.py
   correctness_test: tests/contraction/test_contraction_correctness.py
   benchmark_test: benchmark/test_contraction_perf.py
-  correctness_mark: tensor_contraction_trinary
-  benchmark_mark: tensor_contraction_trinary
+  correctness_mark: ContractionTrinary
+  benchmark_mark: ContractionTrinary
   benchmark_modes:
   - kernel
   - operator
   status: active
-  id: tensor_contraction_trinary
+  id: ContractionTrinary
   for:
-  - tensor_contraction_trinary
+  - ContractionTrinary
   labels:
   - cuTensor
   - BLAS
@@ -773,43 +787,20 @@ ops:
   stages:
   - active: '0.1'
   description: Three-input tensor contraction with element-wise trinary reduction.
-- name: tgett
+- name: ElementwiseTrinary
   category: contraction
-  python_api: flagtensor.tgett
-  impl_file: src/flagtensor/ops/CUTENSOR_OP_TGETT.py
-  correctness_test: tests/contraction/test_contraction_correctness.py
-  benchmark_test: benchmark/test_contraction_perf.py
-  correctness_mark: tgett
-  benchmark_mark: tgett
-  benchmark_modes:
-  - kernel
-  - operator
-  status: stable
-  id: tgett
-  for:
-  - tgett
-  labels:
-  - cuTensor
-  - BLAS
-  kind:
-  - BLAS
-  stages:
-  - stable: '1.0'
-  description: Tensor contraction with the first operand transposed.
-- name: trinary_generic
-  category: contraction
-  python_api: flagtensor.trinary
+  python_api: flagtensor.elementwise_trinary
   impl_file: src/flagtensor/ops/CUTENSOR_OP_TRINARY_GENERIC.py
   correctness_test: tests/contraction/test_contraction_correctness.py
   benchmark_test: benchmark/test_contraction_perf.py
-  correctness_mark: trinary_generic
-  benchmark_mark: trinary_generic
+  correctness_mark: ElementwiseTrinary
+  benchmark_mark: ElementwiseTrinary
   benchmark_modes:
   - operator
   status: stable
-  id: trinary_generic
+  id: ElementwiseTrinary
   for:
-  - trinary_generic
+  - ElementwiseTrinary
   labels:
   - cuTensor
   - BLAS
@@ -818,26 +809,3 @@ ops:
   stages:
   - stable: '1.0'
   description: Generic element-wise trinary operator with optional unary transforms.
-- name: ttgt
-  category: contraction
-  python_api: flagtensor.ttgt
-  impl_file: src/flagtensor/ops/CUTENSOR_OP_TTGT.py
-  correctness_test: tests/contraction/test_contraction_correctness.py
-  benchmark_test: benchmark/test_contraction_perf.py
-  correctness_mark: ttgt
-  benchmark_mark: ttgt
-  benchmark_modes:
-  - kernel
-  - operator
-  status: stable
-  id: ttgt
-  for:
-  - ttgt
-  labels:
-  - cuTensor
-  - BLAS
-  kind:
-  - BLAS
-  stages:
-  - stable: '1.0'
-  description: Tensor contraction with both operands transposed.
