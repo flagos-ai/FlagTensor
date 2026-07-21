@@ -46,7 +46,7 @@ class DeviceDetector:
     Detection priority (first match wins):
     1. Environment variables: GEMS_VENDOR, FLAGGEMS_VENDOR, GEMS_BACKEND, FLAGGEMS_BACKEND, PPU_SDK
     2. Quick PyTorch attribute check: torch.npu, torch.mlu, torch.musa, etc.
-       → Falls back to torch.cuda.get_device_properties() for NVIDIA
+       → Falls back to torch.cuda.get_device_properties() for NVIDIA/Metax
     3. System query: runs each vendor's device_query_cmd in parallel
     """
 
@@ -140,6 +140,12 @@ class DeviceDetector:
                     return "ppu"
                 if "NVIDIA" in upper_name:
                     return "nvidia"
+                if any(
+                    key in device_name for key in ("METAX", "MACA", "C500", "C550")
+                ):
+                    return "metax"
+                if any(key in device_name for key in ("PPU", "ZW810E", "T-HEAD")):
+                    return "thead"
             except Exception:
                 pass
 
