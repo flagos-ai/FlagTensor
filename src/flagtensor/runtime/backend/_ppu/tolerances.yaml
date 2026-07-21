@@ -77,4 +77,3 @@ benchmark_verify_floor_by_op:
     atol: 5.0e-3
     rtol: 1.0e-3
 
-
