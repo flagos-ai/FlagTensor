@@ -21,9 +21,8 @@ from flagtensor import BlockSparseTensor
 from flagtensor import BlockSparseTensorContraction
 from flagtensor import BlockSparseTensorDescriptor
 from flagtensor import block_sparse_contraction
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_BENCHMARK_SHAPES
-from flagtensor.cutensor import CuTensorBlockSparseContraction
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _build_block_contraction_plan
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _get_section_extents_for_coord
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _launch_block_sparse_gemm
@@ -197,7 +196,7 @@ class BlockSparseTensorContractionBenchmark(Benchmark):
         if a.dtype not in (torch.float32, torch.complex64, torch.complex128):
             return None
 
-        baseline = CuTensorBlockSparseContraction(dtype=a.dtype)
+        baseline = get_baseline_class("BlockSparseContraction")(dtype=a.dtype)
 
         def run_kernel():
             result = baseline(a, (0, 1), b, (1, 2), c, (0, 2), (0, 2), alpha=1.25, beta=0.5)

@@ -18,9 +18,8 @@ import pytest
 import torch
 
 from flagtensor import atanh
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_ATANH_BENCHMARK_SHAPES
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorAtanh
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_ATANH"
@@ -47,7 +46,7 @@ class AtanhBenchmark(Benchmark):
     def baseline_impl(self, x):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorAtanh(dtype=x.dtype)
+            baseline = get_baseline_class(OP_NAME)(dtype=x.dtype)
             self.baselines[x.dtype] = baseline
         baseline.prepare(x)
         return baseline(x)
@@ -63,8 +62,8 @@ class AtanhBenchmark(Benchmark):
 def test_atanh_perf():
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not vendor_baseline_available():
+        pytest.skip("baseline unavailable")
 
     bench = AtanhBenchmark()
     results = bench.run()

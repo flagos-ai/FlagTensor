@@ -4,9 +4,8 @@ import pytest
 import torch
 
 from flagtensor import contraction
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_GETT_BENCHMARK_SHAPES
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorContraction
 from flagtensor.ops.CUTENSOR_OP_GETT import _is_default_2d_gett_case, _launch_gett_kernel
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
@@ -52,7 +51,7 @@ class GettBenchmark(Benchmark):
     def baseline_impl(self, a, b, c):
         baseline = self.baselines.get(a.dtype)
         if baseline is None:
-            baseline = CuTensorContraction(dtype=a.dtype)
+            baseline = get_baseline_class("Contraction")(dtype=a.dtype)
             self.baselines[a.dtype] = baseline
         mode_a, mode_b, mode_d, _, _ = _Contraction_case(tuple(a.shape), tuple(b.shape))
         return baseline(a, b, c=c, alpha=1.25, beta=0.5, mode_a=mode_a, mode_b=mode_b, mode_c=mode_d, mode_d=mode_d)
@@ -84,7 +83,7 @@ class GettBenchmark(Benchmark):
             return None
         baseline = self.baselines.get(a.dtype)
         if baseline is None:
-            baseline = CuTensorContraction(dtype=a.dtype)
+            baseline = get_baseline_class("Contraction")(dtype=a.dtype)
             self.baselines[a.dtype] = baseline
 
         def run_kernel():
@@ -98,8 +97,8 @@ class GettBenchmark(Benchmark):
 def test_Contraction_perf():
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not vendor_baseline_available():
+        pytest.skip("baseline unavailable")
 
     bench = GettBenchmark()
     results = bench.run()

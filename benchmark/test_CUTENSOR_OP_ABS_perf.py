@@ -19,9 +19,8 @@ import torch
 import triton
 
 from flagtensor import abs
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
 from flagtensor.config import DEFAULT_ABS_BENCHMARK_SHAPES, DEFAULT_BENCHMARK_DTYPES
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorAbs
 from flagtensor.ops.CUTENSOR_OP_ABS import _abs_kernel
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
@@ -49,7 +48,7 @@ class AbsBenchmark(Benchmark):
     def baseline_impl(self, x):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorAbs(dtype=x.dtype)
+            baseline = get_baseline_class(OP_NAME)(dtype=x.dtype)
             self.baselines[x.dtype] = baseline
         baseline.prepare(x)
         return baseline(x)
@@ -76,7 +75,7 @@ class AbsBenchmark(Benchmark):
     def build_baseline_kernel_callable(self, x):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorAbs(dtype=x.dtype)
+            baseline = get_baseline_class(OP_NAME)(dtype=x.dtype)
             self.baselines[x.dtype] = baseline
         return baseline.build_kernel_callable(x)
 
@@ -85,8 +84,8 @@ class AbsBenchmark(Benchmark):
 def test_abs_perf():
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not vendor_baseline_available():
+        pytest.skip("baseline unavailable")
 
     bench = AbsBenchmark()
     results = bench.run()

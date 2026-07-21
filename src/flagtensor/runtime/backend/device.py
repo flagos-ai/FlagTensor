@@ -90,9 +90,12 @@ class DeviceDetector:
     # Layer 1: environment variables
     # ------------------------------------------------------------------
     def _get_vendor_from_env(self):
-        # PPU_SDK → thead (T-Head XuanTie)
+        # Alibaba PPU exposes a CUDA-compatible SDK (PPU_SDK/CUDA_SDK) and is
+        # driven through torch.cuda, but it is a distinct accelerator with
+        # its own vendor libraries (libacblas, libacdnn, ...). Route it to
+        # the dedicated ppu backend module (see _ppu/), not the nvidia one.
         if "PPU_SDK" in os.environ:
-            return "thead"
+            return "ppu"
 
         env_keys = (
             "GEMS_VENDOR",
@@ -122,14 +125,20 @@ class DeviceDetector:
             if hasattr(torch_module, attr):
                 return str(vendor_name)
 
-        # Fallback: check torch.cuda for CUDA-like backends.
+        # Fallback: check torch.cuda for NVIDIA or CUDA-compatible PPU
         if hasattr(torch_module, "cuda") and hasattr(
             torch_module.cuda, "get_device_properties"
         ):
             try:
                 prop = torch_module.cuda.get_device_properties(0)
-                device_name = prop.name.upper()
-                if "NVIDIA" in device_name:
+                upper_name = prop.name.upper()
+                # NVIDIA cards report "NVIDIA ..." while Alibaba PPU cards
+                # report "PPU-...". Both speak CUDA (sm80) but route to
+                # distinct vendor backend modules so each vendor carries
+                # its own baseline / tolerance / arch configs.
+                if upper_name.startswith("PPU"):
+                    return "ppu"
+                if "NVIDIA" in upper_name:
                     return "nvidia"
                 if any(
                     key in device_name for key in ("METAX", "MACA", "C500", "C550")
