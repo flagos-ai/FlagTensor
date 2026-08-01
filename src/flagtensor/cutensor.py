@@ -746,6 +746,27 @@ except OSError:
     libcutensor = None
     CUTENSOR_AVAILABLE = False
 
+# Some non-NVIDIA SDKs (e.g. Iluvatar CoreX) ship a placeholder
+# libcutensor.so that dlopens successfully but lacks the symbols this module
+# binds at import time. Detect such stubs up-front and treat cuTensor as
+# unavailable so the runtime routes to the vendor-native baseline instead of
+# crashing on ``c_void_p.in_dll``. On NVIDIA (full cuTensor install) every
+# symbol below is present, so this check is a no-op there.
+if CUTENSOR_AVAILABLE:
+    try:
+        for _sym in (
+            "CUTENSOR_COMPUTE_DESC_16F",
+            "CUTENSOR_COMPUTE_DESC_16BF",
+            "CUTENSOR_COMPUTE_DESC_32F",
+            "CUTENSOR_COMPUTE_DESC_64F",
+        ):
+            c_void_p.in_dll(libcutensor, _sym)
+        for _fn in ("cutensorCreate", "cutensorDestroy"):
+            getattr(libcutensor, _fn)
+    except (ValueError, AttributeError):
+        libcutensor = None
+        CUTENSOR_AVAILABLE = False
+
 # Lazy import of the PyTorch-native baseline used by BlockSparseTensorContraction
 # when cuTensor is unavailable. Imported here (not at top of file) to avoid a
 # circular dependency: torch_baseline.py imports from cutensor.py.

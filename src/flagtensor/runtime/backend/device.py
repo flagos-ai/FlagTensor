@@ -138,6 +138,11 @@ class DeviceDetector:
                 # its own baseline / tolerance / arch configs.
                 if upper_name.startswith("PPU"):
                     return "ppu"
+                # Iluvatar CoreX cards report "Iluvatar ..." (e.g.
+                # "Iluvatar BI-V150") and are also driven through
+                # torch.cuda, but route to the dedicated iluvatar backend.
+                if "ILUVATAR" in upper_name:
+                    return "iluvatar"
                 if "NVIDIA" in upper_name:
                     return "nvidia"
                 if any(

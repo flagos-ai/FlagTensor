@@ -661,8 +661,7 @@ def _build_unary_kernel(op_name: str, variant0, variant1):
     module_name = f"_gen_{op_name}"
     file_path = os.path.join(cache_dir, f"{module_name}.py")
 
-    with open(file_path, "w") as f:
-        f.write(f"""import triton
+    kernel_src = f"""import triton
 import triton.language as tl
 from flagtensor import runtime
 from flagtensor.utils.libtuner import libtuner
@@ -697,7 +696,32 @@ def _{op_name}_kernel(
 
 result = _{op_name}_kernel
 result.__name__ = "_{op_name}_kernel"
-""")
+"""
+
+    # 多 GPU worker 并发导入同一算子时（如 tools/run_tests.py 每 GPU 一个
+    # 进程），直接覆写共享的 _gen_*.py 会让其他进程读到写了一半的内容，
+    # 导致 triton.jit 的 inspect.getsourcelines 抛 "could not get source
+    # code"。内容不变时跳过写入；需要写入时先写临时文件再 os.replace
+    # 原子替换，保证并发读者始终看到完整文件（生成的内容是确定性的）。
+    need_write = True
+    try:
+        with open(file_path, "r") as f:
+            need_write = f.read() != kernel_src
+    except OSError:
+        need_write = True
+    if need_write:
+        import tempfile
+        fd, tmp_path = tempfile.mkstemp(dir=cache_dir, suffix=".py")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(kernel_src)
+            os.replace(tmp_path, file_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     if module_name in sys.modules:
         del sys.modules[module_name]
