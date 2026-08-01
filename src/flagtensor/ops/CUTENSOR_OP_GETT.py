@@ -21,21 +21,51 @@ from flagtensor.cutensor import _normalize_modes
 _GETT_PREPARED_LAUNCHER_CACHE = {}
 
 
+def _is_iluvatar_vendor():
+    """True when the active vendor backend is Iluvatar CoreX.
+
+    Evaluated once at import; any failure conservatively keeps the
+    NVIDIA/PPU code paths (base configs, plain autotuner launches).
+    """
+    try:
+        from flagtensor import runtime as _rt
+        return _rt.device.vendor_name == "iluvatar"
+    except Exception:
+        return False
+
+
+_ILUVATAR = _is_iluvatar_vendor()
+
+_GETT_BASE_CONFIGS = [
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=3),
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=3),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=3),
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=8, num_stages=3),
+    triton.Config({"BLOCK_M": 32, "BLOCK_N": 128, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=4, num_stages=4),
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=4, num_stages=4),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=4, num_stages=4),
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=4, num_stages=4),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 16, "GROUP_M": 8}, num_warps=2, num_stages=5),
+    triton.Config({"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=2, num_stages=4),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=2, num_stages=4),
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=8, num_stages=4),
+]
+
+# Extra configs tuned on Iluvatar BI-V150 (16 SMs, warp_size=64, 128KB
+# smem/SM) via a standalone scan of the benchmark shapes: small 32x32
+# tiles with few pipeline stages win nearly every shape, and 128x128/s2
+# wins the largest one. Appended only when the iluvatar backend is active
+# so the autotune space on other vendors stays byte-identical.
+_GETT_ILUVATAR_EXTRA_CONFIGS = [
+    triton.Config({"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 32, "GROUP_M": 4}, num_warps=4, num_stages=3),
+    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=2),
+    triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=8, num_stages=2),
+]
+
+
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=8, num_stages=3),
-        triton.Config({"BLOCK_M": 32, "BLOCK_N": 128, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=4, num_stages=4),
-        triton.Config({"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=4, num_stages=4),
-        triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=4, num_stages=4),
-        triton.Config({"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=4, num_stages=4),
-        triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 16, "GROUP_M": 8}, num_warps=2, num_stages=5),
-        triton.Config({"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=2, num_stages=4),
-        triton.Config({"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=2, num_stages=4),
-        triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=8, num_stages=4),
-    ],
+    configs=_GETT_BASE_CONFIGS + (_GETT_ILUVATAR_EXTRA_CONFIGS if _ILUVATAR else []),
     key=["M", "N", "K", "TRANS_A", "TRANS_B"],
 )
 @triton.jit
@@ -186,7 +216,7 @@ def _make_prepared_gett_launcher(a, b, c, out, *, trans_a=False, trans_b=False):
     has_c = c is not None
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),)
 
-    def _run(a_tensor, b_tensor, c_tensor, out_tensor, alpha, beta):
+    def _launch(a_tensor, b_tensor, c_tensor, out_tensor, alpha, beta):
         _gett_kernel[grid](
             a_tensor,
             b_tensor,
@@ -210,6 +240,57 @@ def _make_prepared_gett_launcher(a, b, c, out, *, trans_a=False, trans_b=False):
             HAS_C=has_c,
         )
         return out_tensor
+
+    if not _ILUVATAR:
+        return _launch
+
+    # Iluvatar: JITFunction.run dispatch costs ~0.15 ms per call on the
+    # CoreX Triton fork (vs ~0.01 ms of GPU time for these GEMM sizes),
+    # which dominates host-timed call paths. After the first call (which
+    # drives the standard autotuner so the best config is settled), the
+    # chosen config is frozen into a direct CompiledKernel runner
+    # (~0.012 ms per call, same kernel launch semantics — CUDA-graph
+    # replay was measured to cost ~0.06 ms GPU-side on this stack, so it
+    # is not used). Runners are keyed by pointer 16B-alignment because
+    # the compiled kernel is specialised on it. Any failure during
+    # freezing permanently falls back to the plain autotuner path.
+    state = {"frozen": {}, "failures": 0}
+
+    def _run(a_tensor, b_tensor, c_tensor, out_tensor, alpha, beta):
+        if state["failures"] >= 2:
+            return _launch(a_tensor, b_tensor, c_tensor, out_tensor, alpha, beta)
+        align_key = (
+            a_tensor.data_ptr() % 16 == 0,
+            b_tensor.data_ptr() % 16 == 0,
+            (c_tensor.data_ptr() % 16 == 0) if c_tensor is not None else None,
+            out_tensor.data_ptr() % 16 == 0,
+        )
+        runner = state["frozen"].get(align_key)
+        if runner is not None:
+            runner(
+                a_tensor, b_tensor, c_tensor, out_tensor, M, N, K,
+                stride_am, stride_ak, stride_bk, stride_bn,
+                stride_cm, stride_cn, stride_dm, stride_dn, alpha, beta,
+            )
+            return out_tensor
+        # Not frozen yet: launch through the standard autotuner (it tunes
+        # all configs on the first call and records the winner), then
+        # freeze that winner into a direct CompiledKernel runner.
+        result = _launch(a_tensor, b_tensor, c_tensor, out_tensor, alpha, beta)
+        try:
+            cfg = _gett_kernel.best_config
+            kernel = _gett_kernel.fn.run(
+                a_tensor, b_tensor, c_tensor, out_tensor, M, N, K,
+                stride_am, stride_ak, stride_bk, stride_bn,
+                stride_cm, stride_cn, stride_dm, stride_dn, alpha, beta,
+                TRANS_A=trans_a, TRANS_B=trans_b, HAS_C=has_c,
+                grid=(1,), warmup=True, **cfg.all_kwargs(),
+            )
+            grid_1d = triton.cdiv(M, cfg.kwargs["BLOCK_M"]) * triton.cdiv(N, cfg.kwargs["BLOCK_N"])
+            state["frozen"][align_key] = kernel[(grid_1d, 1, 1)]
+        except Exception:
+            state["failures"] += 1
+        return result
 
     return _run
 
