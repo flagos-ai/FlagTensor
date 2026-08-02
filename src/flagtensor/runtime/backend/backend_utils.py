@@ -42,24 +42,7 @@ def get_tune_config(vendor_name=None, file_mode='r', file_path=None):
             config = yaml.safe_load(file)
     except FileNotFoundError:
         if not backend_event:
-            # Vendor-level tune_configs.yaml is missing. Fall back to the
-            # NVIDIA config so that CUDA-compatible vendors (e.g. Alibaba
-            # PPU, sm80) can reuse the Ampere autotune defaults without
-            # having to ship a duplicate yaml. Arch-level configs (under
-            # _<vendor>/<arch>/tune_configs.yaml) are still loaded by
-            # BackendArchEvent and take precedence when present.
-            if vendor_name and vendor_name != '_nvidia':
-                nvidia_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    '_nvidia', 'tune_configs.yaml',
-                )
-                try:
-                    with open(nvidia_path, file_mode) as file:
-                        config = yaml.safe_load(file)
-                except FileNotFoundError:
-                    raise FileNotFoundError(f'Configuration file not found: {file_path}')
-            else:
-                raise FileNotFoundError(f'Configuration file not found: {file_path}')
+            raise FileNotFoundError(f'Configuration file not found: {file_path}')
     except yaml.YAMLError as e:
         raise ValueError(f'Failed to parse YAML file: {e}')
     except Exception as e:

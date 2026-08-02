@@ -46,7 +46,7 @@ class DeviceDetector:
     Detection priority (first match wins):
     1. Environment variables: GEMS_VENDOR, FLAGGEMS_VENDOR, GEMS_BACKEND, FLAGGEMS_BACKEND, PPU_SDK
     2. Quick PyTorch attribute check: torch.npu, torch.mlu, torch.musa, etc.
-       → Falls back to torch.cuda.get_device_properties() for NVIDIA/Metax
+       → Falls back to torch.cuda.get_device_properties() for NVIDIA
     3. System query: runs each vendor's device_query_cmd in parallel
     """
 
@@ -90,12 +90,9 @@ class DeviceDetector:
     # Layer 1: environment variables
     # ------------------------------------------------------------------
     def _get_vendor_from_env(self):
-        # Alibaba PPU exposes a CUDA-compatible SDK (PPU_SDK/CUDA_SDK) and is
-        # driven through torch.cuda, but it is a distinct accelerator with
-        # its own vendor libraries (libacblas, libacdnn, ...). Route it to
-        # the dedicated ppu backend module (see _ppu/), not the nvidia one.
+        # PPU_SDK → thead (T-Head XuanTie)
         if "PPU_SDK" in os.environ:
-            return "ppu"
+            return "thead"
 
         env_keys = (
             "GEMS_VENDOR",
@@ -125,27 +122,14 @@ class DeviceDetector:
             if hasattr(torch_module, attr):
                 return str(vendor_name)
 
-        # Fallback: check torch.cuda for NVIDIA or CUDA-compatible PPU
+        # Fallback: check torch.cuda for NVIDIA
         if hasattr(torch_module, "cuda") and hasattr(
             torch_module.cuda, "get_device_properties"
         ):
             try:
                 prop = torch_module.cuda.get_device_properties(0)
-                upper_name = prop.name.upper()
-                # NVIDIA cards report "NVIDIA ..." while Alibaba PPU cards
-                # report "PPU-...". Both speak CUDA (sm80) but route to
-                # distinct vendor backend modules so each vendor carries
-                # its own baseline / tolerance / arch configs.
-                if upper_name.startswith("PPU"):
-                    return "ppu"
-                if "NVIDIA" in upper_name:
+                if "NVIDIA" in prop.name.upper():
                     return "nvidia"
-                if any(
-                    key in device_name for key in ("METAX", "MACA", "C500", "C550")
-                ):
-                    return "metax"
-                if any(key in device_name for key in ("PPU", "ZW810E", "T-HEAD")):
-                    return "thead"
             except Exception:
                 pass
 

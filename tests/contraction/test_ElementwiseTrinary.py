@@ -14,10 +14,15 @@
 
 import pytest
 import torch
+
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
 from flagtensor import elementwise_trinary
 
 @pytest.mark.ElementwiseTrinary
 def test_elementwise_trinary_smoke():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
     assert callable(elementwise_trinary), "elementwise_trinary should be callable"

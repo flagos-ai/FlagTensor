@@ -1,0 +1,106 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# FlagTensor Ascend 910C Docker 镜像
+#
+# 构建前提：宿主机已安装 CANN 8.5.0 + NPU 驱动 25.5.0+，并通过 volume 挂载到容器。
+# 该 Dockerfile 只负责安装 Python 依赖；CANN 和驱动通过 -v 挂载透传。
+#
+# 构建命令：
+#   docker build -f docker/Dockerfile.ascend -t flagtensor:ascend-910c .
+#
+# 运行命令（8 NPU 透传）：
+#   docker run -it --rm \
+#       --device /dev/davinci0 --device /dev/davinci1 \
+#       --device /dev/davinci2 --device /dev/davinci3 \
+#       --device /dev/davinci4 --device /dev/davinci5 \
+#       --device /dev/davinci6 --device /dev/davinci7 \
+#       --device /dev/davinci_manager --device /dev/devmm_svm \
+#       --device /dev/hisi_hdc \
+#       -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+#       -v /usr/local/Ascend/add-ons:/usr/local/Ascend/add-ons:ro \
+#       -v /usr/local/Ascend/ascend-toolkit:/usr/local/Ascend/ascend-toolkit:ro \
+#       -v $(pwd):/workspace \
+#       -w /workspace \
+#       flagtensor:ascend-910c bash
+#
+# 容器内运行测试：
+#   source /usr/local/Ascend/ascend-toolkit/set_env.sh
+#   python3 tools/run_tests.py --stages all --gpus 0,1,2,3,4,5,6,7 --output-dir results
+
+FROM openeuler/openeuler:22.03-lts-sp4
+
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV GEMS_VENDOR=ascend
+
+# 系统依赖：Python 3.9 + C++ 编译器（triton-ascend JIT 需要）+ 基础工具
+RUN chmod 1777 /tmp \
+    && yum update -y -q \
+    && yum install -y -q \
+       python python3-pip python3-devel \
+       gcc gcc-c++ make cmake \
+       git which \
+    && yum clean all
+
+# 升级 pip + 安装 Python 运行时依赖
+# 注意：torch_npu 必须和 torch 版本完全匹配，这里用 --no-deps 避免被覆盖
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 1. PyTorch 2.8.0（CPU 版本，torch_npu 会注册 NPU 后端）
+RUN python3 -m pip install --no-cache-dir torch==2.8.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# 2. torch_npu 2.8.0.post5（必须和 torch 版本匹配）
+#    用 --no-deps 避免 pip 重新解析整个 torch 依赖树（aarch64 上很慢）
+RUN python3 -m pip download --no-deps --dest /tmp/whl torch_npu \
+    && python3 -m pip install --no-deps --no-cache-dir /tmp/whl/torch_npu-*.whl \
+    && rm -rf /tmp/whl
+
+# 3. triton-ascend 3.2.0（让 FlagTensor 的 triton kernel 在 Ascend 上编译/执行）
+RUN python3 -m pip download --no-deps --dest /tmp/whl triton-ascend \
+    && python3 -m pip install --no-deps --no-cache-dir /tmp/whl/triton_ascend-*.whl \
+    && rm -rf /tmp/whl
+
+# 4. 运行时依赖
+RUN python3 -m pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    numpy==2.0.2 \
+    pytest \
+    matplotlib \
+    PyYAML \
+    pandas
+
+# 5. 设置 LD_LIBRARY_PATH 让 libtorch_npu.so / libtorch.so 可被 triton-ascend 找到
+ENV LD_LIBRARY_PATH=/usr/local/lib64/python3.9/site-packages/torch/lib:/usr/local/lib64/python3.9/site-packages/torch_npu/lib:${LD_LIBRARY_PATH}
+
+# FlagTensor 源码
+COPY . /workspace
+WORKDIR /workspace
+
+# 安装 FlagTensor 为可编辑模式（不装依赖，依赖已在上面装好）
+RUN python3 -m pip install -e . --no-deps
+
+# 构建阶段验证（不依赖 NPU 设备的部分）
+RUN python3 -c "import torch; print('torch:', torch.__version__)" \
+    && python3 -c "import torch_npu; print('torch_npu:', torch_npu.__version__)" \
+    && python3 -c "import triton; print('triton:', triton.__version__)" \
+    && python3 -c "import numpy; print('numpy:', numpy.__version__)" \
+    && python3 -c "import pytest; print('pytest:', pytest.__version__)" \
+    && echo "=== FlagTensor Ascend 镜像构建成功（运行时需透传 NPU 设备） ==="
+
+# 默认入口：source CANN 环境后跑测试
+# 实际运行时需要 -v 挂载宿主机的 CANN 到 /usr/local/Ascend/ascend-toolkit
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["source /usr/local/Ascend/ascend-toolkit/set_env.sh && python3 tools/run_tests.py --stages all --gpus 0,1,2,3,4,5,6,7 --output-dir results"]

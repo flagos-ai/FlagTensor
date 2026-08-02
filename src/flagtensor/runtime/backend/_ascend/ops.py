@@ -11,13 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from backend_utils import VendorInfoBase
-
-vendor_info = VendorInfoBase(
-    vendor_name='nvidia', device_name='cuda', device_query_cmd='nvidia-smi'
-)
-ARCH_MAP = {'9': 'hopper', '8': 'ampere'}
-CUSTOMIZED_UNUSED_OPS = ()
-
-__all__ = ['*']

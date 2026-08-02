@@ -17,6 +17,10 @@ import torch
 
 from tests.accuracy_utils import gems_assert_close, gems_assert_equal, to_reference
 from tests.accuracy_utils import POINTWISE_SHAPES, FLOAT_DTYPES
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
 from flagtensor import mul
 
 
@@ -24,10 +28,10 @@ from flagtensor import mul
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mul_correctness(shape, dtype):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
-    x = torch.randn(shape, device="cuda", dtype=dtype)
-    y = torch.randn(shape, device="cuda", dtype=dtype)
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
+    y = torch.randn(shape, device=_device_str, dtype=dtype)
     ref_x = to_reference(x, upcast=True)
     ref_y = to_reference(y, upcast=(dtype in (torch.float16, torch.float32, torch.bfloat16)))
     ref_out = x * y

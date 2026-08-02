@@ -37,6 +37,8 @@ from flagtensor.cutensor import (
     _normalize_modes,
     _resolve_operator,
 )
+
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 from flagtensor.ops.CUTENSOR_OP_ADD import add
 from flagtensor.ops.CUTENSOR_OP_MAX import max
 from flagtensor.ops.CUTENSOR_OP_MIN import min
@@ -942,7 +944,7 @@ class _TritonTrinaryExecutor:
         }
 
     def __call__(self, a, b, c, *, mode_a=None, mode_b=None, mode_c=None, mode_d=None, out=None):
-        if not a.is_cuda or not b.is_cuda or not c.is_cuda:
+        if not _is_on_accelerator(a) or not _is_on_accelerator(b) or not _is_on_accelerator(c):
             raise ValueError("input tensors must be on CUDA")
         if a.dtype != b.dtype or a.dtype != c.dtype:
             raise TypeError("input tensors must have the same dtype")
@@ -1551,7 +1553,7 @@ def elementwise_trinary(
     Raises ``ValueError`` when the output rank exceeds
     ``_MAX_SUPPORTED_OUTPUT_RANK`` (16).
     """
-    if not a.is_cuda or not b.is_cuda or not c.is_cuda:
+    if not _is_on_accelerator(a) or not _is_on_accelerator(b) or not _is_on_accelerator(c):
         raise ValueError("input tensors must be on CUDA")
     if a.dtype != b.dtype or a.dtype != c.dtype:
         raise TypeError("input tensors must have the same dtype")

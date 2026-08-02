@@ -34,12 +34,18 @@ if ROOT not in sys.path:
 
 from flagtensor_registry import load_operator_registry
 from benchmark import consts
+from flagtensor.runtime import (
+    device as _runtime_device,
+    device_str as _runtime_device_str,
+    empty_cache as _runtime_empty_cache,
+    is_accelerator_available as _runtime_is_accelerator_available,
+)
 
 # ---------------------------------------------------------------------------
 # Re-export device info for test files
 # ---------------------------------------------------------------------------
-device_name = "cuda"
-vendor_name = "nvidia"
+device_name = _runtime_device_str
+vendor_name = _runtime_device.vendor_name
 
 record_logger = logging.getLogger("flagtensor_benchmark")
 record_logger.propagate = False
@@ -270,15 +276,15 @@ def _bench_setup_once(request):
 @pytest.fixture(scope="function", autouse=True)
 def _bench_clear_function_cache():
     yield
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    if _runtime_is_accelerator_available():
+        _runtime_empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _bench_clear_module_cache():
     yield
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    if _runtime_is_accelerator_available():
+        _runtime_empty_cache()
 
 
 @pytest.fixture()

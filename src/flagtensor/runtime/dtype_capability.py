@@ -26,6 +26,8 @@ Usage::
     print(dtype_capability.supported_int)           # set of torch int dtypes
 """
 
+from __future__ import annotations
+
 import torch
 
 from flagtensor.runtime.backend.device import DeviceDetector

@@ -18,8 +18,29 @@ import pytest
 import torch
 
 from flagtensor import contraction_trinary
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_TENSOR_CONTRACTION_TRINARY_BENCHMARK_SHAPES
+from flagtensor.cutensor import CUTENSOR_AVAILABLE
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
+try:
+    from flagtensor.cutensor import CuTensorContraction as _BaselineClass
+except ImportError:
+    _BaselineClass = None
+try:
+    from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+except ImportError:
+    _TORCH_NPU_AVAILABLE = lambda: False
+BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
+try:
+    from flagtensor.cutensor import CuTensorContractionTrinary as _ContractionTrinaryBaseline
+except ImportError:
+    try:
+        from flagtensor.torch_npu_baseline import CuTensorContractionTrinary as _ContractionTrinaryBaseline
+    except ImportError:
+        _ContractionTrinaryBaseline = None
 from flagtensor.ops.CUTENSOR_OP_GETT import _launch_gett_kernel
 from flagtensor.ops.CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY import _launch_fused_trinary_kernel
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
@@ -75,7 +96,7 @@ class TensorContractionTrinaryBenchmark(Benchmark):
     def baseline_impl(self, a, b, c, d):
         baseline = self.operator_baselines.get(a.dtype)
         if baseline is None:
-            baseline = get_baseline_class("ContractionTrinary")(dtype=a.dtype)
+            baseline = _ContractionTrinaryBaseline(dtype=a.dtype)
             self.operator_baselines[a.dtype] = baseline
         mode_a, mode_b, mode_c, mode_d, mode_e, _, _ = _tensor_contraction_trinary_case(tuple(a.shape), tuple(b.shape), tuple(c.shape))
         return baseline(a, b, c, d=d, alpha=1.25, beta=0.5, mode_a=mode_a, mode_b=mode_b, mode_c=mode_c, mode_d=mode_d, mode_e=mode_e)
@@ -121,7 +142,7 @@ class TensorContractionTrinaryBenchmark(Benchmark):
             return None
         baseline = self.kernel_baselines.get(a.dtype)
         if baseline is None:
-            baseline = get_baseline_class("Contraction")(dtype=a.dtype)
+            baseline = self._get_baseline_instance(a.dtype)
             self.kernel_baselines[a.dtype] = baseline
         # Pre-allocate intermediate buffer
         intermediate = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=a.dtype)
@@ -138,10 +159,10 @@ class TensorContractionTrinaryBenchmark(Benchmark):
 @pytest.mark.performance
 @pytest.mark.ContractionTrinary
 def test_tensor_contraction_trinary_perf():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
-    if not vendor_baseline_available():
-        pytest.skip("baseline unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
+    if not BASELINE_AVAILABLE:
+        pytest.skip("Vendor baseline unavailable")
 
     kernel_bench = TensorContractionTrinaryBenchmark(mode="kernel")
     operator_bench = TensorContractionTrinaryBenchmark(mode="operator")
@@ -151,6 +172,6 @@ def test_tensor_contraction_trinary_perf():
     for result in results:
         print(
             f"mode={result.mode} shape={result.shape} dtype={result.dtype} "
-            f"triton_ms={result.latency:.6f} cutensor_ms={result.latency_base:.6f} "
+            f"triton_ms={result.latency:.6f} baseline_ms={result.latency_base:.6f} "
             f"speedup={result.speedup:.3f}x"
         )

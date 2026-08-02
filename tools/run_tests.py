@@ -43,6 +43,15 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Make ``src/`` importable so ``import flagtensor`` / ``import flagtensor_registry``
+# work when running this script from any cwd (the project is a src-layout
+# package). This mirrors what benchmark/conftest.py and tests/conftest.py do.
+_SRC_PATH = str(ROOT / "src")
+if _SRC_PATH not in sys.path:
+    sys.path.insert(0, _SRC_PATH)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 OPTS = argparse.Namespace()
 CFG = types.SimpleNamespace()
 
@@ -239,29 +248,54 @@ def _probe_torch():
         perror(f"pytorch not installed, please fix it - {e}")
         sys.exit(-1)
 
+    # Detect the active accelerator backend. FlagTensor runtime auto-discovers
+    # the vendor (NVIDIA CUDA / Huawei Ascend NPU / ...). We probe both the
+    # generic runtime flag and the legacy torch.cuda path so the env record
+    # stays compatible with older single-vendor runs.
     try:
-        import torch
-        cuda_available = torch.cuda.is_available()
-        ENV_INFO["torch"]["cuda_available"] = cuda_available
-        pinfo(f"PyTorch CUDA support ... {cuda_available}")
+        from flagtensor.runtime import (
+            device as _ft_device,
+            device_str as _ft_device_str,
+            is_accelerator_available as _ft_is_accelerator_available,
+        )
+        ENV_INFO["torch"]["device_name"] = _ft_device_str
+        ENV_INFO["torch"]["vendor"] = _ft_device.vendor_name
+        ENV_INFO["torch"]["accelerator_available"] = _ft_is_accelerator_available()
+        pinfo(f"PyTorch device ... {_ft_device_str} (vendor={_ft_device.vendor_name})")
+        try:
+            dev_count = _ft_device.device_count
+            ENV_INFO["torch"]["device_count"] = dev_count
+            pinfo(f"PyTorch device count ... {dev_count}")
+        except Exception:
+            ENV_INFO["torch"]["device_count"] = 0
     except Exception:
-        ENV_INFO["torch"]["cuda_available"] = False
+        # Fallback: legacy NVIDIA-only probing.
+        try:
+            cuda_available = torch.cuda.is_available()
+            ENV_INFO["torch"]["cuda_available"] = cuda_available
+            ENV_INFO["torch"]["device_name"] = "cuda"
+            ENV_INFO["torch"]["vendor"] = "nvidia"
+            ENV_INFO["torch"]["accelerator_available"] = cuda_available
+            pinfo(f"PyTorch CUDA support ... {cuda_available}")
+        except Exception:
+            ENV_INFO["torch"]["cuda_available"] = False
+            ENV_INFO["torch"]["accelerator_available"] = False
+            ENV_INFO["torch"]["device_name"] = "N/A"
+            ENV_INFO["torch"]["vendor"] = "unknown"
 
-    try:
-        import torch
-        dev_name = torch.cuda.get_device_name()
-        ENV_INFO["torch"]["device_name"] = dev_name
-        pinfo(f"PyTorch device name ... {dev_name}")
-    except Exception:
-        ENV_INFO["torch"]["device_name"] = "N/A"
+        try:
+            dev_name = torch.cuda.get_device_name()
+            ENV_INFO["torch"]["device_name_hardware"] = dev_name
+            pinfo(f"PyTorch device name ... {dev_name}")
+        except Exception:
+            ENV_INFO["torch"]["device_name_hardware"] = "N/A"
 
-    try:
-        import torch
-        dev_count = torch.cuda.device_count()
-        ENV_INFO["torch"]["device_count"] = dev_count
-        pinfo(f"PyTorch device count ... {dev_count}")
-    except Exception:
-        ENV_INFO["torch"]["device_count"] = 0
+        try:
+            dev_count = torch.cuda.device_count()
+            ENV_INFO["torch"]["device_count"] = dev_count
+            pinfo(f"PyTorch device count ... {dev_count}")
+        except Exception:
+            ENV_INFO["torch"]["device_count"] = 0
 
 
 def _probe_flagtree():
@@ -316,8 +350,18 @@ def probe_env():
 # GPU env
 # ===================================================================
 def get_env(gpu_id):
+    """Build the per-worker environment, isolating one accelerator device.
+
+    On NVIDIA we set ``CUDA_VISIBLE_DEVICES``; on Ascend we set
+    ``ASCEND_RT_VISIBLE_DEVICES`` (the CANN equivalent understood by
+    torch_npu). Both are exported so the same worker code runs on either
+    vendor without per-test branching.
+    """
     env = os.environ.copy()
+    # NVIDIA device isolation
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    # Ascend device isolation (CANN / torch_npu)
+    env["ASCEND_RT_VISIBLE_DEVICES"] = str(gpu_id)
     env["PYTHONUNBUFFERED"] = "1"
     return env
 

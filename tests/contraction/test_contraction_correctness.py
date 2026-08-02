@@ -21,8 +21,23 @@ from flagtensor.config import DEFAULT_GETT_TEST_SHAPES
 from flagtensor.config import DEFAULT_TGETT_TEST_SHAPES
 from flagtensor.config import DEFAULT_TTGT_TEST_SHAPES
 from flagtensor.cutensor import CUTENSOR_AVAILABLE
-from flagtensor.cutensor import CuTensorContraction
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
 from flagtensor.testing import assert_close
+
+# On Ascend there is no cuTensor; use the torch_npu-aten baseline as the
+# vendor reference instead.
+if CUTENSOR_AVAILABLE:
+    from flagtensor.cutensor import CuTensorContraction as _ContractionBaseline
+else:
+    try:
+        from flagtensor.torch_npu_baseline import CuTensorContraction as _ContractionBaseline
+    except ImportError:
+        _ContractionBaseline = None
+
+_BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _ContractionBaseline is not None
 
 
 CONTRACT_DTYPES = list(DEFAULT_CORRECTNESS_DTYPES)  # f16, f32, f64, bf16
@@ -44,13 +59,13 @@ def _contraction_reference(a, b, c, reference):
 @pytest.mark.parametrize("dtype", CONTRACT_DTYPES)
 @pytest.mark.parametrize("shape_a,shape_b", DEFAULT_GETT_TEST_SHAPES)
 def test_contraction_correctness(dtype, shape_a, shape_b):
-    if not torch.cuda.is_available() or not CUTENSOR_AVAILABLE:
-        pytest.skip("CUDA/cuTensor unavailable")
+    if not _is_accelerator_available() or not _BASELINE_AVAILABLE:
+        pytest.skip("Accelerator/baseline unavailable")
 
-    a = torch.empty(shape_a, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
-    b = torch.empty(shape_b, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
+    a = torch.empty(shape_a, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
+    b = torch.empty(shape_b, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
     mode_a, mode_b, mode_d, c_shape, reference = _contraction_case(shape_a, shape_b)
-    c = torch.empty(c_shape, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
+    c = torch.empty(c_shape, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
     out = contraction(
         a,
         b,
@@ -65,7 +80,7 @@ def test_contraction_correctness(dtype, shape_a, shape_b):
     expected = _contraction_reference(a, b, c, reference)
     assert_close(out, expected, dtype)
 
-    baseline = CuTensorContraction(dtype=dtype)
+    baseline = _ContractionBaseline(dtype=dtype)
     out_base = baseline(
         a,
         b,
@@ -100,13 +115,13 @@ def _contraction_trans_a_reference(a, b, c, reference):
 @pytest.mark.parametrize("shape_a,shape_b", DEFAULT_TGETT_TEST_SHAPES)
 def test_contraction_trans_a_correctness(dtype, shape_a, shape_b):
     """Contraction with first operand transposed (formerly tgett)."""
-    if not torch.cuda.is_available() or not CUTENSOR_AVAILABLE:
-        pytest.skip("CUDA/cuTensor unavailable")
+    if not _is_accelerator_available() or not _BASELINE_AVAILABLE:
+        pytest.skip("Accelerator/baseline unavailable")
 
-    a = torch.empty(shape_a, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
-    b = torch.empty(shape_b, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
+    a = torch.empty(shape_a, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
+    b = torch.empty(shape_b, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
     mode_a, mode_b, mode_d, c_shape, reference = _contraction_trans_a_case(shape_a, shape_b)
-    c = torch.empty(c_shape, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
+    c = torch.empty(c_shape, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
     a_t = a.transpose(-1, -2).contiguous()
     out = contraction(
         a_t,
@@ -122,7 +137,7 @@ def test_contraction_trans_a_correctness(dtype, shape_a, shape_b):
     expected = _contraction_trans_a_reference(a, b, c, reference)
     assert_close(out, expected, dtype)
 
-    baseline = CuTensorContraction(dtype=dtype)
+    baseline = _ContractionBaseline(dtype=dtype)
     out_base = baseline(
         a_t,
         b,
@@ -157,13 +172,13 @@ def _contraction_trans_ab_reference(a, b, c, reference):
 @pytest.mark.parametrize("shape_a,shape_b", DEFAULT_TTGT_TEST_SHAPES)
 def test_contraction_trans_ab_correctness(dtype, shape_a, shape_b):
     """Contraction with both operands transposed (formerly ttgt)."""
-    if not torch.cuda.is_available() or not CUTENSOR_AVAILABLE:
-        pytest.skip("CUDA/cuTensor unavailable")
+    if not _is_accelerator_available() or not _BASELINE_AVAILABLE:
+        pytest.skip("Accelerator/baseline unavailable")
 
-    a = torch.empty(shape_a, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
-    b = torch.empty(shape_b, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
+    a = torch.empty(shape_a, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
+    b = torch.empty(shape_b, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
     mode_a, mode_b, mode_d, c_shape, reference = _contraction_trans_ab_case(shape_a, shape_b)
-    c = torch.empty(c_shape, device="cuda", dtype=dtype).uniform_(-2.0, 2.0)
+    c = torch.empty(c_shape, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0)
     a_t = a.transpose(-1, -2).contiguous()
     b_t = b.transpose(-1, -2).contiguous()
     out = contraction(
@@ -180,7 +195,7 @@ def test_contraction_trans_ab_correctness(dtype, shape_a, shape_b):
     expected = _contraction_trans_ab_reference(a, b, c, reference)
     assert_close(out, expected, dtype)
 
-    baseline = CuTensorContraction(dtype=dtype)
+    baseline = _ContractionBaseline(dtype=dtype)
     out_base = baseline(
         a_t,
         b_t,

@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.cutensor import _normalize_modes
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 
 _GETT_PREPARED_LAUNCHER_CACHE = {}
 
@@ -135,11 +136,11 @@ def _is_default_2d_gett_case(a, b, c, mode_a, mode_b, mode_c, mode_d):
 
 
 def _supports_triton_gett(a, b, c, mode_a, mode_b, mode_c, mode_d):
-    if not a.is_cuda or not b.is_cuda:
+    if not _is_on_accelerator(a) or not _is_on_accelerator(b):
         return False
     if a.dtype != b.dtype or a.dtype not in (torch.float16, torch.float32, torch.bfloat16):
         return False
-    if c is not None and (not c.is_cuda or c.dtype != a.dtype):
+    if c is not None and (not _is_on_accelerator(c) or c.dtype != a.dtype):
         return False
     return _is_default_2d_gett_case(a, b, c, mode_a, mode_b, mode_c, mode_d)
 
@@ -236,7 +237,7 @@ def _validate_triton_gett_inputs(a, b, c, out):
     if c is not None and tuple(c.shape) != (a.shape[0], b.shape[1]):
         raise ValueError(f"addend tensor shape mismatch: expected {(a.shape[0], b.shape[1])}, got {tuple(c.shape)}")
     if out is not None:
-        if not out.is_cuda:
+        if not _is_on_accelerator(out):
             raise ValueError("output tensor must be on CUDA")
         if out.dtype != a.dtype:
             raise TypeError("output tensor must have the same dtype as inputs")
@@ -484,15 +485,15 @@ def contraction(a, b, *, c=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, 
     dtypes are handled by reshaping to 2D and dispatching through the same
     Triton GEMM kernel.
     """
-    if not a.is_cuda or not b.is_cuda:
+    if not _is_on_accelerator(a) or not _is_on_accelerator(b):
         raise ValueError("input tensors must be on CUDA")
     if a.dtype != b.dtype:
         raise TypeError("input tensors must have the same dtype")
-    if c is not None and not c.is_cuda:
+    if c is not None and not _is_on_accelerator(c):
         raise ValueError("addend tensor must be on CUDA")
     if c is not None and c.dtype != a.dtype:
         raise TypeError("addend tensor must have the same dtype as inputs")
-    if out is not None and not out.is_cuda:
+    if out is not None and not _is_on_accelerator(out):
         raise ValueError("output tensor must be on CUDA")
     if out is not None and out.dtype != a.dtype:
         raise TypeError("output tensor must have the same dtype as inputs")

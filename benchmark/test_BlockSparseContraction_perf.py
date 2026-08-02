@@ -21,8 +21,22 @@ from flagtensor import BlockSparseTensor
 from flagtensor import BlockSparseTensorContraction
 from flagtensor import BlockSparseTensorDescriptor
 from flagtensor import block_sparse_contraction
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_BENCHMARK_SHAPES
+from flagtensor.cutensor import CUTENSOR_AVAILABLE
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
+try:
+    from flagtensor.cutensor import CuTensorBlockSparseContraction as _BaselineClass
+except ImportError:
+    _BaselineClass = None
+try:
+    from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+except ImportError:
+    _TORCH_NPU_AVAILABLE = lambda: False
+BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _build_block_contraction_plan
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _get_section_extents_for_coord
 from flagtensor.ops.CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION import _launch_block_sparse_gemm
@@ -196,7 +210,7 @@ class BlockSparseTensorContractionBenchmark(Benchmark):
         if a.dtype not in (torch.float32, torch.complex64, torch.complex128):
             return None
 
-        baseline = get_baseline_class("BlockSparseContraction")(dtype=a.dtype)
+        baseline = self._get_baseline_instance(a.dtype)
 
         def run_kernel():
             result = baseline(a, (0, 1), b, (1, 2), c, (0, 2), (0, 2), alpha=1.25, beta=0.5)
@@ -211,8 +225,8 @@ class BlockSparseTensorContractionBenchmark(Benchmark):
 @pytest.mark.performance
 @pytest.mark.BlockSparseContraction
 def test_block_sparse_tensor_contraction_perf():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
     bench = BlockSparseTensorContractionBenchmark()
     results = bench.run()

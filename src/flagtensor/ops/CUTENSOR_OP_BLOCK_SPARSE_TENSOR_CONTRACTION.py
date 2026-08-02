@@ -22,6 +22,7 @@ from flagtensor.cutensor import BlockSparseTensorDescriptor
 from flagtensor.cutensor import _infer_contraction_output_shape
 from flagtensor.cutensor import _normalize_modes
 from flagtensor.ops.CUTENSOR_OP_GETT import _launch_gett_kernel
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 
 
 @triton.autotune(
@@ -170,12 +171,12 @@ def _supports_triton_block_sparse(a, b, c, mode_a, mode_b, mode_c, mode_d):
     # Check device using BlockSparseTensor.device property
     if a.device is None or b.device is None:
         return False
-    if a.device.type != 'cuda' or b.device.type != 'cuda':
+    if not _is_on_accelerator(a) or not _is_on_accelerator(b):
         return False
     if a.dtype != b.dtype or a.dtype not in (torch.float32,):
         return False
     if c is not None:
-        if c.device is None or c.device.type != 'cuda' or c.dtype != a.dtype:
+        if c.device is None or not _is_on_accelerator(c) or c.dtype != a.dtype:
             return False
 
     # Only uniform block shapes are supported (no irregular section extents)

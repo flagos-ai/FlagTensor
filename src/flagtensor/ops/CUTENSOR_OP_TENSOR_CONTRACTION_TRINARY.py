@@ -23,6 +23,7 @@ from flagtensor.cutensor import _validate_trinary_contraction_addend
 from flagtensor.ops.CUTENSOR_OP_GETT import contraction
 from flagtensor.ops.CUTENSOR_OP_GETT import _launch_gett_kernel
 from flagtensor.ops.CUTENSOR_OP_GETT import _get_prepared_gett_launcher
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 
 
 _TRINARY_INTERMEDIATE_CACHE = {}
@@ -321,11 +322,11 @@ def _is_default_2d_trinary_case(a, b, c, d, mode_a, mode_b, mode_c, mode_d, mode
 
 
 def _supports_triton_trinary(a, b, c, d, mode_a, mode_b, mode_c, mode_d, mode_e):
-    if not a.is_cuda or not b.is_cuda or not c.is_cuda:
+    if not _is_on_accelerator(a) or not _is_on_accelerator(b) or not _is_on_accelerator(c):
         return False
     if a.dtype != b.dtype or a.dtype != c.dtype or a.dtype not in (torch.float16, torch.float32, torch.bfloat16):
         return False
-    if d is not None and (not d.is_cuda or d.dtype != a.dtype):
+    if d is not None and (not _is_on_accelerator(d) or d.dtype != a.dtype):
         return False
     return _is_default_2d_trinary_case(a, b, c, d, mode_a, mode_b, mode_c, mode_d, mode_e)
 
@@ -348,7 +349,7 @@ def _validate_triton_trinary_inputs(a, b, c, d, out):
     if d is not None and tuple(d.shape) != expected_shape:
         raise ValueError(f"addend tensor shape mismatch: expected {expected_shape}, got {tuple(d.shape)}")
     if out is not None:
-        if not out.is_cuda:
+        if not _is_on_accelerator(out):
             raise ValueError("output tensor must be on CUDA")
         if out.dtype != a.dtype:
             raise TypeError("output tensor must have the same dtype as inputs")
@@ -357,7 +358,7 @@ def _validate_triton_trinary_inputs(a, b, c, d, out):
 
 
 def contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=None, mode_b=None, mode_c=None, mode_d=None, mode_e=None, out=None):
-    if not a.is_cuda or not b.is_cuda or not c.is_cuda:
+    if not _is_on_accelerator(a) or not _is_on_accelerator(b) or not _is_on_accelerator(c):
         raise ValueError("input tensors must be on CUDA")
     if a.dtype != b.dtype or a.dtype != c.dtype:
         raise TypeError("input tensors must have the same dtype")
@@ -377,14 +378,14 @@ def contraction_trinary(a, b, c, *, d=None, alpha=1.0, beta=0.0, mode_a=None, mo
         else:
             mode_d = plan["mode_d"]
     else:
-        if not addend.is_cuda:
+        if not _is_on_accelerator(addend):
             raise ValueError("addend tensor must be on CUDA")
         if addend.dtype != a.dtype:
             raise TypeError("addend tensor must have the same dtype as inputs")
         mode_d = plan["mode_d"]
 
     if out is not None:
-        if not out.is_cuda:
+        if not _is_on_accelerator(out):
             raise ValueError("output tensor must be on CUDA")
         if out.dtype != a.dtype:
             raise TypeError("output tensor must have the same dtype as inputs")

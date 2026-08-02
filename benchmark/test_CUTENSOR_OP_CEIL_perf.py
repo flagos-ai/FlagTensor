@@ -18,8 +18,22 @@ import pytest
 import torch
 
 from flagtensor import ceil
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_class, vendor_baseline_available
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_CEIL_BENCHMARK_SHAPES
+from flagtensor.cutensor import CUTENSOR_AVAILABLE
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
+try:
+    from flagtensor.cutensor import CuTensorCeil as _BaselineClass
+except ImportError:
+    _BaselineClass = None
+try:
+    from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+except ImportError:
+    _TORCH_NPU_AVAILABLE = lambda: False
+BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_CEIL"
@@ -46,7 +60,7 @@ class CeilBenchmark(Benchmark):
     def baseline_impl(self, x):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = get_baseline_class(OP_NAME)(dtype=x.dtype)
+            baseline = self._get_baseline_instance(x.dtype)
             self.baselines[x.dtype] = baseline
         baseline.prepare(x)
         return baseline(x)
@@ -60,10 +74,10 @@ class CeilBenchmark(Benchmark):
 
 @pytest.mark.performance
 def test_ceil_perf():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
-    if not vendor_baseline_available():
-        pytest.skip("baseline unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
+    if not BASELINE_AVAILABLE:
+        pytest.skip("Vendor baseline unavailable")
 
     bench = CeilBenchmark()
     results = bench.run()
@@ -72,6 +86,6 @@ def test_ceil_perf():
     for result in results:
         print(
             f"shape={result.shape} dtype={result.dtype} "
-            f"triton_ms={result.latency:.6f} cutensor_ms={result.latency_base:.6f} "
+            f"triton_ms={result.latency:.6f} baseline_ms={result.latency_base:.6f} "
             f"speedup={result.speedup:.3f}x"
         )
