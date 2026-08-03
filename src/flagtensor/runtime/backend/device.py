@@ -128,7 +128,19 @@ class DeviceDetector:
         ):
             try:
                 prop = torch_module.cuda.get_device_properties(0)
-                if "NVIDIA" in prop.name.upper():
+                upper_name = prop.name.upper()
+                # NVIDIA cards report "NVIDIA ..." while Alibaba PPU cards
+                # report "PPU-...". Both speak CUDA (sm80) but route to
+                # distinct vendor backend modules so each vendor carries
+                # its own baseline / tolerance / arch configs.
+                if upper_name.startswith("PPU"):
+                    return "ppu"
+                # Iluvatar CoreX cards report "Iluvatar ..." (e.g.
+                # "Iluvatar BI-V150") and are also driven through
+                # torch.cuda, but route to the dedicated iluvatar backend.
+                if "ILUVATAR" in upper_name:
+                    return "iluvatar"
+                if "NVIDIA" in upper_name:
                     return "nvidia"
             except Exception:
                 pass

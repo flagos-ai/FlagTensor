@@ -42,7 +42,6 @@ except ImportError:
     except ImportError:
         _ContractionTrinaryBaseline = None
 from flagtensor.ops.CUTENSOR_OP_GETT import _launch_gett_kernel
-from flagtensor.ops.CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY import _launch_fused_trinary_kernel
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY"
@@ -123,11 +122,11 @@ class TensorContractionTrinaryBenchmark(Benchmark):
         out = torch.empty((a.shape[0], c.shape[1]), device=a.device, dtype=a.dtype)
 
         def run_kernel():
-            if a.dtype == torch.float32:
-                _launch_fused_trinary_kernel(a, b, c, d, out, 1.25, 0.5)
-            else:
-                _launch_gett_kernel(a, b, None, intermediate, 1.0, 0.0)
-                _launch_gett_kernel(intermediate, c, d, out, 1.25, 0.5)
+            # Time the two-step GETT path — the same path contraction_trinary()
+            # actually dispatches to for all dtypes (the fused kernel is
+            # disabled in the op: _supports_fused_triton_trinary() is False).
+            _launch_gett_kernel(a, b, None, intermediate, 1.0, 0.0)
+            _launch_gett_kernel(intermediate, c, d, out, 1.25, 0.5)
             return out
 
         return run_kernel
