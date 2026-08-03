@@ -14,10 +14,15 @@
 
 import pytest
 import torch
+
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
 from flagtensor import contraction
 
 @pytest.mark.Contraction
 def test_contraction_smoke():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
     assert callable(contraction), "contraction should be callable"

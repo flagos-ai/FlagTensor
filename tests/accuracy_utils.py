@@ -40,6 +40,7 @@ from flagtensor.testing import default_contraction_shapes
 from flagtensor.testing import default_pointwise_shapes
 from flagtensor.testing import get_tolerance
 from flagtensor.runtime import device as runtime_device
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 
 # ---------------------------------------------------------------------------
 # Device capability flags (matching FlagGems pattern)
@@ -107,8 +108,8 @@ def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=None)
         reduce_dim: Unused (kept for FlagGems API compatibility).
         atol: Optional absolute tolerance override.
     """
-    res_cpu = res.detach().cpu() if res.is_cuda else res.detach()
-    ref_cpu = ref.detach().cpu() if ref.is_cuda else ref.detach()
+    res_cpu = res.detach().cpu() if _is_on_accelerator(res) else res.detach()
+    ref_cpu = ref.detach().cpu() if _is_on_accelerator(ref) else ref.detach()
 
     if dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64):
         if ref_cpu.dtype != dtype:
@@ -124,8 +125,8 @@ def gems_assert_equal(res, ref, equal_nan=False):
         ref:  Reference tensor.
         equal_nan: If True, treat two NaNs as equal.
     """
-    res_cpu = res.detach().cpu() if res.is_cuda else res.detach()
-    ref_cpu = ref.detach().cpu() if ref.is_cuda else ref.detach()
+    res_cpu = res.detach().cpu() if _is_on_accelerator(res) else res.detach()
+    ref_cpu = ref.detach().cpu() if _is_on_accelerator(ref) else ref.detach()
     _assert_equal(res_cpu, ref_cpu, equal_nan=equal_nan)
 
 

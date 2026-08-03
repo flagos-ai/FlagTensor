@@ -228,7 +228,18 @@ def import_vendor_extra_lib(vendor_name=None):
 def set_torch_backend_device_fn(vendor_name=None):
     _state.device_name = _state.device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{_state.device_name}"
-    _state.torch_device_fn_device = importlib.import_module(module_str)
+    try:
+        _state.torch_device_fn_device = importlib.import_module(module_str)
+    except ImportError:
+        # Some backends (e.g. Ascend/torch_npu) do not expose a
+        # torch.backends.<device> module. Fall back to the vendor's top-level
+        # torch extension module so callers can still query device caps.
+        try:
+            _state.torch_device_fn_device = importlib.import_module(
+                f"torch.{_state.device_name}"
+            )
+        except ImportError:
+            _state.torch_device_fn_device = None
 
 
 def get_torch_backend_device_fn():

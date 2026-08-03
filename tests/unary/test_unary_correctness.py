@@ -15,6 +15,11 @@
 import pytest
 import torch
 
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
+
 from flagtensor import abs
 from flagtensor import acos
 from flagtensor import acosh
@@ -105,10 +110,10 @@ from flagtensor.testing import assert_close
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ABS_TEST_SHAPES)
 def test_abs_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = abs(x)
     expected = torch.abs(x)
     assert_close(y, expected, dtype)
@@ -118,10 +123,10 @@ def test_abs_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ACOS_TEST_SHAPES)
 def test_acos_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-1, 1)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-1, 1)
     y = acos(x)
     expected = torch.acos(x)
     assert_close(y, expected, dtype)
@@ -137,10 +142,10 @@ def test_acos_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_IDENTITY_TEST_SHAPES)
 def test_identity_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = identity(x)
     assert_close(y, x, dtype)
 
@@ -155,10 +160,10 @@ def test_identity_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_NEG_TEST_SHAPES)
 def test_neg_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = neg(x)
     expected = torch.neg(x)
     assert_close(y, expected, dtype)
@@ -174,10 +179,10 @@ def test_neg_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_RELU_TEST_SHAPES)
 def test_relu_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = relu(x)
     expected = torch.relu(x)
     assert_close(y, expected, dtype)
@@ -193,10 +198,10 @@ def test_relu_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_CEIL_TEST_SHAPES)
 def test_ceil_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-8.0, 8.0)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-8.0, 8.0)
     y = ceil(x)
     expected = torch.ceil(x)
     assert_close(y, expected, dtype)
@@ -212,10 +217,10 @@ def test_ceil_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_FLOOR_TEST_SHAPES)
 def test_floor_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-8.0, 8.0)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-8.0, 8.0)
     y = floor(x)
     expected = torch.floor(x)
     assert_close(y, expected, dtype)
@@ -231,10 +236,10 @@ def test_floor_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_LOG_TEST_SHAPES)
 def test_log_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(1e-3, 8.0)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(1e-3, 8.0)
     y = log(x)
     expected = torch.log(x)
     assert_close(y, expected, dtype)
@@ -250,10 +255,10 @@ def test_log_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SQRT_TEST_SHAPES)
 def test_sqrt_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.rand(shape, device="cuda", dtype=dtype) + 1e-3
+    x = torch.rand(shape, device=_device_str, dtype=dtype) + 1e-3
     y = sqrt(x)
     expected = torch.sqrt(x)
     assert_close(y, expected, dtype)
@@ -269,10 +274,10 @@ def test_sqrt_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SIN_TEST_SHAPES)
 def test_sin_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = sin(x)
     expected = torch.sin(x)
     assert_close(y, expected, dtype)
@@ -288,10 +293,10 @@ def test_sin_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_COS_TEST_SHAPES)
 def test_cos_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = cos(x)
     expected = torch.cos(x)
     assert_close(y, expected, dtype)
@@ -307,10 +312,10 @@ def test_cos_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_TAN_TEST_SHAPES)
 def test_tan_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = tan(x)
     expected = torch.tan(x)
     assert_close(y, expected, dtype)
@@ -326,10 +331,10 @@ def test_tan_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SINH_TEST_SHAPES)
 def test_sinh_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = sinh(x)
     expected = torch.sinh(x)
     assert_close(y, expected, dtype)
@@ -345,10 +350,10 @@ def test_sinh_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_COSH_TEST_SHAPES)
 def test_cosh_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = cosh(x)
     expected = torch.cosh(x)
     assert_close(y, expected, dtype)
@@ -364,10 +369,10 @@ def test_cosh_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_TANH_TEST_SHAPES)
 def test_tanh_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = tanh(x)
     expected = torch.tanh(x)
     assert_close(y, expected, dtype)
@@ -383,10 +388,10 @@ def test_tanh_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ASIN_TEST_SHAPES)
 def test_asin_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-1, 1)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-1, 1)
     y = asin(x)
     expected = torch.asin(x)
     assert_close(y, expected, dtype)
@@ -402,10 +407,10 @@ def test_asin_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ATAN_TEST_SHAPES)
 def test_atan_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = atan(x)
     expected = torch.atan(x)
     assert_close(y, expected, dtype)
@@ -421,10 +426,10 @@ def test_atan_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SIGMOID_TEST_SHAPES)
 def test_sigmoid_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = sigmoid(x)
     expected = torch.sigmoid(x)
     assert_close(y, expected, dtype)
@@ -440,12 +445,12 @@ def test_sigmoid_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_MISH_TEST_SHAPES)
 def test_mish_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
     import torch.nn.functional as F
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-8.0, 8.0)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-8.0, 8.0)
     y = mish(x)
     expected = F.mish(x)
     assert_close(y, expected, dtype)
@@ -461,10 +466,10 @@ def test_mish_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ASINH_TEST_SHAPES)
 def test_asinh_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=_device_str, dtype=dtype)
     y = asinh(x)
     expected = torch.asinh(x)
     assert_close(y, expected, dtype)
@@ -480,10 +485,10 @@ def test_asinh_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ACOSH_TEST_SHAPES)
 def test_acosh_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(1, 3)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(1, 3)
     y = acosh(x)
     expected = torch.acosh(x)
     assert_close(y, expected, dtype)
@@ -499,10 +504,10 @@ def test_acosh_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_ATANH_TEST_SHAPES)
 def test_atanh_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-0.9, 0.9)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-0.9, 0.9)
     y = atanh(x)
     expected = torch.atanh(x)
     assert_close(y, expected, dtype)
@@ -518,12 +523,12 @@ def test_atanh_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SOFT_PLUS_TEST_SHAPES)
 def test_soft_plus_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
     import torch.nn.functional as F
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-8.0, 8.0)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-8.0, 8.0)
     y = soft_plus(x)
     expected = F.softplus(x)
     assert_close(y, expected, dtype)
@@ -539,10 +544,10 @@ def test_soft_plus_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SOFT_SIGN_TEST_SHAPES)
 def test_soft_sign_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-8.0, 8.0)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-8.0, 8.0)
     y = soft_sign(x)
     expected = x / (torch.abs(x) + 1)
     assert_close(y, expected, dtype)
@@ -558,10 +563,10 @@ def test_soft_sign_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_SWISH_TEST_SHAPES)
 def test_swish_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
-    x = torch.empty(shape, device="cuda", dtype=dtype).uniform_(-8.0, 8.0)
+    x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-8.0, 8.0)
     y = swish(x)
     expected = x * torch.sigmoid(x)
     assert_close(y, expected, dtype)
@@ -577,12 +582,12 @@ def test_swish_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_RCP_TEST_SHAPES)
 def test_rcp_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
     def make_nonzero_tensor(shape, dtype):
-        x = torch.randn(shape, device="cuda", dtype=dtype)
-        eps = torch.tensor(1e-3, device="cuda", dtype=dtype)
+        x = torch.randn(shape, device=_device_str, dtype=dtype)
+        eps = torch.tensor(1e-3, device=_device_str, dtype=dtype)
         return torch.where(x >= 0, x + eps, x - eps)
 
     x = make_nonzero_tensor(shape, dtype)
@@ -601,15 +606,15 @@ def test_rcp_correctness(dtype, shape):
 @pytest.mark.parametrize("dtype", DEFAULT_CONJ_CORRECTNESS_DTYPES)
 @pytest.mark.parametrize("shape", DEFAULT_CONJ_TEST_SHAPES)
 def test_conj_correctness(dtype, shape):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
     def x_real_dtype(dtype):
         return torch.float32 if dtype == torch.complex64 else torch.float64
 
     real_dtype = x_real_dtype(dtype)
-    x = torch.randn(shape, device="cuda", dtype=real_dtype) + 1j * torch.randn(
-        shape, device="cuda", dtype=real_dtype
+    x = torch.randn(shape, device=_device_str, dtype=real_dtype) + 1j * torch.randn(
+        shape, device=_device_str, dtype=real_dtype
     )
     x = x.to(dtype)
     y = conj(x)

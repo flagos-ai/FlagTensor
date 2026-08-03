@@ -21,9 +21,17 @@ import fcntl
 import json
 import logging
 import os
+import sys
 from datetime import datetime
 
 import pytest
+
+ROOT = os.path.dirname(os.path.dirname(__file__))
+SRC = os.path.join(ROOT, "src")
+if SRC not in sys.path:
+    sys.path.insert(0, SRC)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 from flagtensor_registry import load_operator_registry
 

@@ -25,6 +25,8 @@ from flagtensor.ops.elementwise_common import (
     infer_elementwise_output_shape,
     allocate_output_tensor,
 )
+
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 from flagtensor.utils import libtuner
 
 
@@ -312,7 +314,7 @@ class _TritonBinaryExecutor:
         }
 
     def __call__(self, x, y, *, mode_x=None, mode_y=None, mode_out=None, out=None):
-        if not x.is_cuda or not y.is_cuda:
+        if not _is_on_accelerator(x) or not _is_on_accelerator(y):
             raise ValueError("input tensors must be on CUDA")
         if x.dtype != y.dtype:
             raise TypeError("input tensors must have the same dtype")

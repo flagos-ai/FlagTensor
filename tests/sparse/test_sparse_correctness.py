@@ -20,8 +20,18 @@ from flagtensor import BlockSparseTensorContraction
 from flagtensor import BlockSparseTensorDescriptor
 from flagtensor import block_sparse_contraction
 from flagtensor.config import DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_TEST_SHAPES
+from flagtensor.cutensor import CUTENSOR_AVAILABLE
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
 from flagtensor.testing import assert_close
 from tests._legacy_correctness_loader import populate_category_proxy
+
+# On Ascend, BlockSparseTensorContraction (from flagtensor.cutensor) already
+# falls back to a dense contraction when cuTensor is unavailable, so we can
+# re-use it as the vendor baseline there too.
+_BASELINE_AVAILABLE = True
 
 
 def _make_block_sparse(shape, block_shape, dtype, device):
@@ -91,14 +101,14 @@ def _block_sparse_reference(a, b, c, alpha=1.25, beta=0.5):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("shape_a,shape_b", DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_TEST_SHAPES)
 def test_block_sparse_contraction_correctness(dtype, shape_a, shape_b):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
 
     block_k = 4 if shape_a[1] % 4 == 0 and shape_b[0] % 4 == 0 else shape_a[1]
     block_shape_a = (shape_a[0] // 2, block_k)
     block_shape_b = (block_k, shape_b[1] // 2)
-    a = _make_block_sparse(shape_a, block_shape_a, dtype, "cuda")
-    b = _make_block_sparse(shape_b, block_shape_b, dtype, "cuda")
+    a = _make_block_sparse(shape_a, block_shape_a, dtype, _device_str)
+    b = _make_block_sparse(shape_b, block_shape_b, dtype, _device_str)
     c_coords = ((0, 0), (1, 1))
     c_desc = BlockSparseTensorDescriptor(
         shape=(shape_a[0], shape_b[1]),
@@ -108,8 +118,8 @@ def test_block_sparse_contraction_correctness(dtype, shape_a, shape_b):
     c = BlockSparseTensor(
         c_desc,
         {
-            (0, 0): torch.empty(c_desc.block_shape, device="cuda", dtype=dtype).uniform_(-2.0, 2.0),
-            (1, 1): torch.empty(c_desc.block_shape, device="cuda", dtype=dtype).uniform_(-2.0, 2.0),
+            (0, 0): torch.empty(c_desc.block_shape, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0),
+            (1, 1): torch.empty(c_desc.block_shape, device=_device_str, dtype=dtype).uniform_(-2.0, 2.0),
         },
     )
 

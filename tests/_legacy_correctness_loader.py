@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from backend_utils import VendorInfoBase
+"""Backward-compat loader stub.
 
-vendor_info = VendorInfoBase(
-    vendor_name='nvidia', device_name='cuda', device_query_cmd='nvidia-smi'
-)
-ARCH_MAP = {'9': 'hopper', '8': 'ampere'}
-CUSTOMIZED_UNUSED_OPS = ()
+Older correctness modules referenced a ``populate_category_proxy`` helper
+that imported category-level correctness tests into a per-op test module's
+namespace. The current layout uses per-op test files directly, so the
+proxy is a no-op. This stub lets legacy modules import without errors.
+"""
 
-__all__ = ['*']
+def populate_category_proxy(globals_dict, category, skipped_names=()):
+    """No-op stub kept for backwards compatibility."""
+    return None

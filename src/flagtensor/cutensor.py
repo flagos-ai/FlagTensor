@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import ctypes
 from dataclasses import dataclass
 from ctypes import POINTER, byref, c_double, c_float, c_int, c_int32, c_int64, c_uint32, c_uint64, c_void_p
@@ -666,37 +668,18 @@ class BlockSparseTensorContraction:
             out_sparse = self.cutensor_executor(a, mode_a, b, mode_b, c, mode_c, mode_d, alpha=alpha, beta=beta)
             return out_sparse.to_dense()
 
-        # No cuTensor available — fall through to the vendor-agnostic dense
-        # contraction path below. On PPU this is the native baseline (acblas-
-        # backed torch.matmul); on NVIDIA without cuTensor it is also the
-        # correct dense fallback. We use torch.matmul directly (rather than
-        # the cutensor.contraction() function) because the latter would route
-        # through CuTensorContraction which requires cuTensor to be
-        # initialised. The BlockSparseTensor benchmark loads the
-        # vendor-specific kernel-mode baseline separately via
-        # benchmark_core.get_baseline_class("BlockSparseContraction").
-        if c is not None:
-            mode_c = _validate_contraction_addend(c, mode_c, mode_d, output_shape)
-        if len(mode_a) == 2 and len(mode_b) == 2 and mode_a == (0, 1) and mode_b == (1, 2) and mode_d == (0, 2):
-            # Fast path: standard 2D matmul C = alpha * A @ B + beta * C
-            result = alpha * torch.matmul(dense_a, dense_b)
-            if dense_c is not None and beta != 0.0:
-                result = result + beta * dense_c
-        else:
-            # General ND contraction via einsum
-            _cls = _get_torch_contraction_baseline_cls()
-            eq = _cls._einsum_equation(mode_a, mode_b, mode_d)
-            result = alpha * torch.einsum(eq, dense_a, dense_b)
-            if dense_c is not None and beta != 0.0:
-                result = result + beta * dense_c
-        # Apply output block-sparsity mask: the cuTensor path produces a
-        # BlockSparseTensor whose non-zero blocks match c's descriptor, so
-        # the dense fallback must zero out everything outside those blocks
-        # to keep semantics consistent.
-        if c is not None:
-            _bs_cls = _get_torch_block_sparse_baseline_cls()
-            mask = _bs_cls._sparsity_mask(c)
-            result = result * mask.to(result.dtype)
+        result = contraction(
+            dense_a,
+            dense_b,
+            c=dense_c,
+            alpha=alpha,
+            beta=beta,
+            mode_a=mode_a,
+            mode_b=mode_b,
+            mode_c=mode_c,
+            mode_d=mode_d,
+            out=out,
+        )
         return result
 
 

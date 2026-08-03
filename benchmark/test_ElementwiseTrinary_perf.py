@@ -18,8 +18,20 @@ import pytest
 import torch
 
 from flagtensor import elementwise_trinary
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_baseline_module, vendor_baseline_available
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES
+from flagtensor.cutensor import CUTENSOR_AVAILABLE
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
+try:
+    from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+except ImportError:
+    _TORCH_NPU_AVAILABLE = lambda: False
+# Baseline is available on NVIDIA (cuTensor elementwise_trinary) or Ascend
+# (torch_npu-aten trinary via flagtensor.torch_npu_baseline.CuTensorTrinary).
+BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _TORCH_NPU_AVAILABLE()
 from flagtensor.ops.CUTENSOR_OP_TRINARY_GENERIC import _get_triton_trinary_executor
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
@@ -58,6 +70,37 @@ def trinary_reference(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torc
     return out.to(a.dtype) if a.dtype in (torch.float16, torch.bfloat16) else out.to(a.dtype)
 
 
+def _resolve_baseline_executor(dtype):
+    """Return a callable ``executor(a, b, c, alpha=, beta=, gamma=, out=, ...)``.
+
+    On NVIDIA this is the cuTensor trinary executor; on Ascend it is the
+    torch_npu-aten based ``CuTensorTrinary`` instance.
+    """
+    if CUTENSOR_AVAILABLE:
+        from flagtensor.cutensor import _get_trinary_executor as _cu_get
+        op_a = _TRINARY_OP_KWARGS["op_a"]
+        op_b = _TRINARY_OP_KWARGS["op_b"]
+        op_c = _TRINARY_OP_KWARGS["op_c"]
+        op_ab = _TRINARY_OP_KWARGS["op_ab"]
+        op_abc = _TRINARY_OP_KWARGS["op_abc"]
+        return _cu_get(op_ab, op_abc, op_a, op_b, op_c, dtype)
+    try:
+        from flagtensor.torch_npu_baseline import CuTensorTrinary
+        from flagtensor.cutensor import (
+            UNARY_OPERATOR_MAP, BINARY_OPERATOR_MAP,
+        )
+        return CuTensorTrinary(
+            op_ab=BINARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_ab"]],
+            op_abc=BINARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_abc"]],
+            op_a=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_a"]],
+            op_b=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_b"]],
+            op_c=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_c"]],
+            dtype=dtype,
+        )
+    except Exception:
+        return None
+
+
 class TrinaryGenericBenchmark(Benchmark):
     def __init__(self):
         super().__init__(
@@ -78,7 +121,15 @@ class TrinaryGenericBenchmark(Benchmark):
             )
 
     def baseline_impl(self, a, b, c):
-        return get_baseline_module().elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS)
+        executor = _resolve_baseline_executor(a.dtype)
+        if executor is None:
+            raise RuntimeError("No vendor baseline available for trinary on this device")
+        return executor(
+            a, b, c,
+            alpha=_TRINARY_OP_KWARGS["alpha"],
+            beta=_TRINARY_OP_KWARGS["beta"],
+            gamma=_TRINARY_OP_KWARGS["gamma"],
+        )
 
     def triton_impl(self, a, b, c):
         return elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS)
@@ -99,20 +150,13 @@ class TrinaryGenericBenchmark(Benchmark):
     def build_baseline_kernel_callable(self, *args):
         a, b, c = args
         out = torch.empty_like(c)
-        executor = get_baseline_module()._get_trinary_executor(
-            _TRINARY_OP_KWARGS["op_ab"],
-            _TRINARY_OP_KWARGS["op_abc"],
-            _TRINARY_OP_KWARGS["op_a"],
-            _TRINARY_OP_KWARGS["op_b"],
-            _TRINARY_OP_KWARGS["op_c"],
-            a.dtype,
-        )
+        executor = _resolve_baseline_executor(a.dtype)
+        if executor is None:
+            return None
 
         def _run():
             return executor(
-                a,
-                b,
-                c,
+                a, b, c,
                 alpha=_TRINARY_OP_KWARGS["alpha"],
                 beta=_TRINARY_OP_KWARGS["beta"],
                 gamma=_TRINARY_OP_KWARGS["gamma"],
@@ -155,7 +199,16 @@ class TrinaryGenericHighRankIndexedBenchmark(Benchmark):
             )
 
     def baseline_impl(self, a, b, c):
-        return get_baseline_module().elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS, **_INDEXED_MODE_KWARGS)
+        executor = _resolve_baseline_executor(a.dtype)
+        if executor is None:
+            raise RuntimeError("No vendor baseline available for trinary on this device")
+        return executor(
+            a, b, c,
+            alpha=_TRINARY_OP_KWARGS["alpha"],
+            beta=_TRINARY_OP_KWARGS["beta"],
+            gamma=_TRINARY_OP_KWARGS["gamma"],
+            **_INDEXED_MODE_KWARGS,
+        )
 
     def triton_impl(self, a, b, c):
         return elementwise_trinary(a, b, c, **_TRINARY_OP_KWARGS, **_INDEXED_MODE_KWARGS)
@@ -180,20 +233,13 @@ class TrinaryGenericHighRankIndexedBenchmark(Benchmark):
     def build_baseline_kernel_callable(self, *args):
         a, b, c = args
         out = torch.empty_like(c)
-        executor = get_baseline_module()._get_trinary_executor(
-            _TRINARY_OP_KWARGS["op_ab"],
-            _TRINARY_OP_KWARGS["op_abc"],
-            _TRINARY_OP_KWARGS["op_a"],
-            _TRINARY_OP_KWARGS["op_b"],
-            _TRINARY_OP_KWARGS["op_c"],
-            a.dtype,
-        )
+        executor = _resolve_baseline_executor(a.dtype)
+        if executor is None:
+            return None
 
         def _run():
             return executor(
-                a,
-                b,
-                c,
+                a, b, c,
                 alpha=_TRINARY_OP_KWARGS["alpha"],
                 beta=_TRINARY_OP_KWARGS["beta"],
                 gamma=_TRINARY_OP_KWARGS["gamma"],
@@ -207,10 +253,10 @@ class TrinaryGenericHighRankIndexedBenchmark(Benchmark):
 @pytest.mark.performance
 @pytest.mark.ElementwiseTrinary
 def test_trinary_generic_perf():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
-    if not vendor_baseline_available():
-        pytest.skip("baseline unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
+    if not BASELINE_AVAILABLE:
+        pytest.skip("Vendor baseline unavailable")
 
     bench = TrinaryGenericBenchmark()
     results = bench.run()
@@ -219,7 +265,7 @@ def test_trinary_generic_perf():
     for result in results:
         print(
             f"shape={result.shape} dtype={result.dtype} mode={result.mode} "
-            f"triton_ms={result.latency:.6f} cutensor_ms={result.latency_base:.6f} "
+            f"triton_ms={result.latency:.6f} baseline_ms={result.latency_base:.6f} "
             f"speedup={result.speedup:.3f}x"
         )
 
@@ -227,10 +273,10 @@ def test_trinary_generic_perf():
 @pytest.mark.performance
 @pytest.mark.ElementwiseTrinary
 def test_trinary_generic_kernel_perf():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
-    if not vendor_baseline_available():
-        pytest.skip("baseline unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
+    if not BASELINE_AVAILABLE:
+        pytest.skip("Vendor baseline unavailable")
 
     bench = TrinaryGenericKernelBenchmark()
     results = bench.run()
@@ -239,7 +285,7 @@ def test_trinary_generic_kernel_perf():
     for result in results:
         print(
             f"shape={result.shape} dtype={result.dtype} mode={result.mode} "
-            f"triton_ms={result.latency:.6f} cutensor_ms={result.latency_base:.6f} "
+            f"triton_ms={result.latency:.6f} baseline_ms={result.latency_base:.6f} "
             f"speedup={result.speedup:.3f}x"
         )
 
@@ -247,10 +293,10 @@ def test_trinary_generic_kernel_perf():
 @pytest.mark.performance
 @pytest.mark.ElementwiseTrinary
 def test_trinary_generic_high_rank_indexed_perf():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
-    if not vendor_baseline_available():
-        pytest.skip("baseline unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
+    if not BASELINE_AVAILABLE:
+        pytest.skip("Vendor baseline unavailable")
 
     bench = TrinaryGenericHighRankIndexedBenchmark()
     results = bench.run()
@@ -259,6 +305,6 @@ def test_trinary_generic_high_rank_indexed_perf():
     for result in results:
         print(
             f"shape={result.shape} dtype={result.dtype} "
-            f"triton_ms={result.latency:.6f} cutensor_ms={result.latency_base:.6f} "
+            f"triton_ms={result.latency:.6f} baseline_ms={result.latency_base:.6f} "
             f"speedup={result.speedup:.3f}x"
         )
