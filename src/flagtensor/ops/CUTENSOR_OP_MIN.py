@@ -1,59 +1,20 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
-import triton
-import triton.language as tl
-
-from flagtensor import runtime
-from flagtensor.utils import libtuner
+from flagtensor.ops.CUTENSOR_OP_BINARY_GENERIC import binary_generic
 
 
-@libtuner(
-    configs=runtime.get_tuned_config("elementwise_binary"),
-    key=["n_elements"],
-    strategy=["align32"],
-    warmup=5,
-    rep=10,
-)
-@triton.heuristics(runtime.get_heuristic_config("elementwise_binary"))
-@triton.jit
-def _min_kernel(
-    x_ptr,
-    y_ptr,
-    z_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-    BLOCKS_PER_PROGRAM: tl.constexpr,
-    KERNEL_ID: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
-    if KERNEL_ID == 0:
-        offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-        mask = offsets < n_elements
-        x = tl.load(x_ptr + offsets, mask=mask)
-        y = tl.load(y_ptr + offsets, mask=mask)
-        z = tl.minimum(x, y)
-        tl.store(z_ptr + offsets, z, mask=mask)
-    else:
-        for block_idx in tl.static_range(0, BLOCKS_PER_PROGRAM):
-            offsets = block_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-            mask = offsets < n_elements
-            x = tl.load(x_ptr + offsets, mask=mask)
-            y = tl.load(y_ptr + offsets, mask=mask)
-            z = tl.where(x < y, x, y)
-            tl.store(z_ptr + offsets, z, mask=mask)
-
-
-def min(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    if not x.is_cuda or not y.is_cuda:
-        raise ValueError("input tensors must be on CUDA")
-    if x.dtype != y.dtype:
-        raise TypeError("input tensors must have the same dtype")
-    if x.shape != y.shape:
-        raise ValueError("input tensors must have the same shape")
-    z = torch.empty_like(x)
-    n_elements = z.numel()
-    grid = lambda meta: (
-        triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-    )
-    _min_kernel[grid](x, y, z, n_elements)
-    return z
+def min(x: torch.Tensor, y: torch.Tensor, *, mode_x=None, mode_y=None, mode_out=None, out=None) -> torch.Tensor:
+    return binary_generic(x, y, op="min", mode_x=mode_x, mode_y=mode_y, mode_out=mode_out, out=out)

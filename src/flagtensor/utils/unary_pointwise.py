@@ -1,12 +1,48 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Callable, Optional, Tuple
 
 import torch
 import triton
 import triton.language as tl
-from triton.language.extra.cuda import libdevice
+
+try:
+    from triton.language.extra.cuda import libdevice
+except ImportError:
+    # Non-NVIDIA backends (e.g. triton-ascend) ship their own libdevice under
+    # a vendor-specific subpackage. Fall back to the active vendor's module.
+    try:
+        from triton.language.extra.ascend import libdevice  # type: ignore
+    except ImportError:  # pragma: no cover — keeps test collection working
+        libdevice = None  # type: ignore
 
 from flagtensor import runtime
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 from flagtensor.utils.libtuner import libtuner
+
+
+# ---------------------------------------------------------------------------
+# Vendor flag — triton-ascend's libdevice has precision bugs in asin/acos
+# and a JIT bug in atan2. On NVIDIA we keep the original libdevice calls
+# (faster, more precise, autotuner has two distinct variants to compare).
+# On Ascend we fall back to atan-based mathematically-equivalent forms.
+# ---------------------------------------------------------------------------
+try:
+    _IS_ASCEND = runtime.device.vendor_name == "ascend"
+except Exception:
+    _IS_ASCEND = False
 
 
 _UNARY_FAMILY_RULES = {
@@ -22,7 +58,7 @@ _UNARY_FAMILY_RULES = {
     "cosh_like": ("cosh_exp_pair", "cosh_exp_recip"),
     "exp_like": ("exp_intrinsic", "exp2_scaled"),
     "floor_like": ("floor_intrinsic", "floor_ceil_adjust"),
-    "identity_like": ("identity_direct", "identity_f32"),
+    "identity_like": ("identity_direct", "identity_direct"),
     "log_like": ("log_intrinsic", "log2_scaled"),
     "neg_like": ("neg_direct", "neg_sub"),
     "rcp_like": ("rcp_direct", "rcp_exp_log"),
@@ -32,7 +68,7 @@ _UNARY_FAMILY_RULES = {
     "sinh_like": ("sinh_exp_pair", "sinh_exp_recip"),
     "softsign_like": ("softsign_abs", "softsign_piecewise"),
     "sqrt_like": ("sqrt_intrinsic", "sqrt_rsqrt"),
-    "tan_like": ("tan_divide", "tan_recip_divide"),
+    "tan_like": ("tan_libdevice", "tan_divide"),
     "tanh_like": ("tanh_exp2", "tanh_exp"),
     "softplus_like": ("softplus_where", "softplus_max"),
     "swish_like": ("swish_exp2", "swish_exp"),
@@ -80,21 +116,39 @@ def _build_abs_where_variant(scalar_fn):
 
 @_register_unary_rewrite("acos_libdevice")
 def _build_acos_libdevice_variant(scalar_fn):
+    if _IS_ASCEND:
+        # triton-ascend's libdevice.acos has a precision bug (~3e-4 error).
+        # Fall back to ``pi/2 - atan(x / sqrt(1-x*x))`` which uses only the
+        # well-behaved libdevice.atan path.
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            return pi_over_2 - libdevice.atan(xf / tl.sqrt(1.0 - xf * xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.acos(x.to(tl.float32))
-
     return _variant
 
 
 @_register_unary_rewrite("acos_asin_shift")
 def _build_acos_asin_shift_variant(scalar_fn):
+    if _IS_ASCEND:
+        # Same atan-based fallback as acos_libdevice above.
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            return pi_over_2 - libdevice.atan(xf / tl.sqrt(1.0 - xf * xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         pi_over_2: tl.constexpr = 1.5707963267948966
         xf = x.to(tl.float32)
         return pi_over_2 - libdevice.asin(xf)
-
     return _variant
 
 
@@ -119,20 +173,37 @@ def _build_acosh_log_sqrt_variant(scalar_fn):
 
 @_register_unary_rewrite("asin_libdevice")
 def _build_asin_libdevice_variant(scalar_fn):
+    if _IS_ASCEND:
+        # triton-ascend's libdevice.asin has a precision bug (~3e-4 error).
+        # Fall back to ``atan(x / sqrt(1-x*x))`` which uses only the
+        # well-behaved libdevice.atan path.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            return libdevice.atan(xf / tl.sqrt(1.0 - xf * xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.asin(x.to(tl.float32))
-
     return _variant
 
 
 @_register_unary_rewrite("asin_atan2")
 def _build_asin_atan2_variant(scalar_fn):
+    if _IS_ASCEND:
+        # triton-ascend's libdevice.atan2 is unusable inside JIT functions.
+        # Reuse the atan-based form from asin_libdevice.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            return libdevice.atan(xf / tl.sqrt(1.0 - xf * xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
         return 2 * libdevice.atan2(xf, 1 + tl.sqrt(1 - xf * xf))
-
     return _variant
 
 
@@ -168,11 +239,18 @@ def _build_atan_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("atan_atan2")
 def _build_atan_atan2_variant(scalar_fn):
+    if _IS_ASCEND:
+        # triton-ascend's libdevice.atan2 is unusable inside JIT functions.
+        # atan2(x, 1.0) == atan(x), so use libdevice.atan directly.
+        @triton.jit
+        def _variant(x):
+            return libdevice.atan(x.to(tl.float32))
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
         return libdevice.atan2(xf, 1.0)
-
     return _variant
 
 
@@ -470,6 +548,15 @@ def _build_sqrt_rsqrt_variant(scalar_fn):
     return _variant
 
 
+@_register_unary_rewrite("tan_libdevice")
+def _build_tan_libdevice_variant(scalar_fn):
+    @triton.jit
+    def _variant(x):
+        return libdevice.tan(x.to(tl.float32))
+
+    return _variant
+
+
 @_register_unary_rewrite("tan_divide")
 def _build_tan_divide_variant(scalar_fn):
     @triton.jit
@@ -623,45 +710,168 @@ def _resolve_family_variants(
 
 
 def _build_unary_kernel(op_name: str, variant0, variant1):
-    @libtuner(
-        configs=runtime.get_tuned_config("elementwise_unary"),
-        key=["n_elements"],
-        strategy=["align32"],
-        warmup=5,
-        rep=10,
-    )
-    @triton.heuristics(runtime.get_heuristic_config("elementwise_unary"))
-    @triton.jit
-    def _kernel(
-        x_ptr,
-        y_ptr,
-        n_elements,
-        BLOCK_SIZE: tl.constexpr,
-        BLOCKS_PER_PROGRAM: tl.constexpr,
-        KERNEL_ID: tl.constexpr,
-    ):
-        pid = tl.program_id(axis=0)
-        block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
-        if KERNEL_ID == 0:
-            offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-            mask = offsets < n_elements
-            x = tl.load(x_ptr + offsets, mask=mask)
-            y = variant0(x)
-            tl.store(y_ptr + offsets, y, mask=mask)
-        else:
-            for block_idx in tl.static_range(0, BLOCKS_PER_PROGRAM):
-                offsets = block_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                mask = offsets < n_elements
-                x = tl.load(x_ptr + offsets, mask=mask)
-                y = variant1(x)
-                tl.store(y_ptr + offsets, y, mask=mask)
+    # Triton 3.3 JIT 编译器的 JITFunction.__init__ 依赖
+    # inspect.getsourcelines(fn) 获取源码，且 AST→TTIR 阶段无法解析
+    # Python 闭包变量 (free variable)。将 kernel 写入 .py 文件后通过
+    # importlib 加载，使 inspect 能定位源码，同时将 variant 函数
+    # 及其闭包依赖全部注入为模块全局变量来绕开限制。
+    import os
+    import sys
+    import importlib.util
 
-    _kernel.__name__ = f"_{op_name}_kernel"
-    return _kernel
+    cache_dir = os.path.join(os.path.dirname(__file__), "__kernels__")
+    os.makedirs(cache_dir, exist_ok=True)
+
+    module_name = f"_gen_{op_name}"
+    file_path = os.path.join(cache_dir, f"{module_name}.py")
+
+    kernel_src = f"""import triton
+import triton.language as tl
+from flagtensor import runtime
+from flagtensor.utils.libtuner import libtuner
+
+@libtuner(
+    configs=runtime.get_tuned_config("elementwise_unary"),
+    key=["n_elements"],
+    strategy=["align32"],
+    warmup=5,
+    rep=10,
+)
+@triton.heuristics(runtime.get_heuristic_config("elementwise_unary"))
+@triton.jit
+def _{op_name}_kernel(
+    x_ptr,
+    y_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCKS_PER_PROGRAM: tl.constexpr,
+    KERNEL_ID: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
+    offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    if KERNEL_ID == 0:
+        y = _variant0(x)
+    else:
+        y = _variant1(x)
+    tl.store(y_ptr + offsets, y, mask=mask)
+
+result = _{op_name}_kernel
+result.__name__ = "_{op_name}_kernel"
+"""
+
+    # 多 GPU worker 并发导入同一算子时（如 tools/run_tests.py 每 GPU 一个
+    # 进程），直接覆写共享的 _gen_*.py 会让其他进程读到写了一半的内容，
+    # 导致 triton.jit 的 inspect.getsourcelines 抛 "could not get source
+    # code"。内容不变时跳过写入；需要写入时先写临时文件再 os.replace
+    # 原子替换，保证并发读者始终看到完整文件（生成的内容是确定性的）。
+    need_write = True
+    try:
+        with open(file_path, "r") as f:
+            need_write = f.read() != kernel_src
+    except OSError:
+        need_write = True
+    if need_write:
+        import tempfile
+        fd, tmp_path = tempfile.mkstemp(dir=cache_dir, suffix=".py")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(kernel_src)
+            os.replace(tmp_path, file_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    if module_name in sys.modules:
+        del sys.modules[module_name]
+
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    mod = importlib.util.module_from_spec(spec)
+
+    mod._variant0 = variant0
+    mod._variant1 = variant1
+
+    # variant 函数本身可能也有闭包依赖（如 scalar_fn），一并注入
+    for variant in (variant0, variant1):
+        # JITFunction 包装了一层，闭包在 .fn 上
+        inner = getattr(variant, "fn", variant)
+        closure = getattr(inner, "__closure__", None)
+        if closure:
+            freevars = getattr(inner, "__code__", None)
+            if freevars:
+                for cell, name in zip(closure, freevars.co_freevars):
+                    if not hasattr(mod, name):
+                        setattr(mod, name, cell.cell_contents)
+
+    sys.modules[module_name] = mod
+    spec.loader.exec_module(mod)
+
+    sys.modules.pop(module_name, None)
+    return mod.result
 
 
 def _default_prepare(x: torch.Tensor) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
     return None, x
+
+
+# Default dtypes supported by all Triton unary kernels.
+# Each operator can expand this via the supported_dtypes kwarg.
+_DEFAULT_UNARY_DTYPES = {torch.float16, torch.float32, torch.bfloat16}
+
+# Additional dtype groups for operators that support them.
+_TRIVIAL_UNARY_EXTRA = {torch.int8, torch.float8_e5m2}  # identity, abs
+_NEG_UNARY_EXTRA = {torch.int8}  # neg works for int8 (fp8_e5m2 fails on triton 3.3)
+
+class _UnaryPointwiseExecutor:
+    def __init__(self, kernel, prepare_input, supported_dtypes=None):
+        self.kernel = kernel
+        self.prepare_input = prepare_input
+        self.layout_cache = {}
+        self._supported = supported_dtypes or _DEFAULT_UNARY_DTYPES
+
+    def _layout_key(self, x: torch.Tensor):
+        return (
+            x.dtype,
+            tuple(x.shape),
+            x.stride(),
+            x.is_contiguous(),
+        )
+
+    def _build_plan(self, prepared_x: torch.Tensor):
+        return {
+            "contiguous": prepared_x.is_contiguous(),
+        }
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        if not _is_on_accelerator(x):
+            raise ValueError("input tensor must be on the active accelerator device")
+        if x.dtype not in self._supported:
+            raise ValueError(
+                f"unsupported dtype {x.dtype} for unary operator; "
+                f"supported: {sorted(str(d) for d in self._supported)}"
+            )
+        handled, prepared_x = self.prepare_input(x)
+        if handled is not None:
+            return handled
+
+        layout_key = self._layout_key(prepared_x)
+        plan = self.layout_cache.get(layout_key)
+        if plan is None:
+            plan = self._build_plan(prepared_x)
+            self.layout_cache[layout_key] = plan
+
+        y = torch.empty_like(prepared_x)
+        n_elements = y.numel()
+        grid = lambda meta: (
+            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
+        )
+        self.kernel[grid](prepared_x, y, n_elements)
+        return y
 
 
 def make_unary_pointwise(
@@ -669,29 +879,17 @@ def make_unary_pointwise(
     variant0,
     variant1,
     *,
-    fallback_float64: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     prepare_input: Optional[
         Callable[[torch.Tensor], Tuple[Optional[torch.Tensor], torch.Tensor]]
     ] = None,
+    supported_dtypes: Optional[set[torch.dtype]] = None,
 ):
     kernel = _build_unary_kernel(op_name, variant0, variant1)
     prepare = prepare_input or _default_prepare
+    executor = _UnaryPointwiseExecutor(kernel, prepare, supported_dtypes=supported_dtypes)
 
     def op(x: torch.Tensor) -> torch.Tensor:
-        if not x.is_cuda:
-            raise ValueError("input tensor must be on CUDA")
-        handled, prepared_x = prepare(x)
-        if handled is not None:
-            return handled
-        if prepared_x.dtype == torch.float64 and fallback_float64 is not None:
-            return fallback_float64(prepared_x)
-        y = torch.empty_like(prepared_x)
-        n_elements = y.numel()
-        grid = lambda meta: (
-            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-        )
-        kernel[grid](prepared_x, y, n_elements)
-        return y
+        return executor(x)
 
     op.__name__ = op_name
     return kernel, op
@@ -702,11 +900,11 @@ def make_unary_pointwise_from_family(
     family: str,
     scalar_fn,
     *,
-    fallback_float64: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     prepare_input: Optional[
         Callable[[torch.Tensor], Tuple[Optional[torch.Tensor], torch.Tensor]]
     ] = None,
     rewrite_rules: Optional[Tuple[str, str]] = None,
+    supported_dtypes: Optional[set[torch.dtype]] = None,
 ):
     if family not in _UNARY_FAMILY_RULES:
         raise ValueError(f"unsupported unary family: {family}")
@@ -715,6 +913,6 @@ def make_unary_pointwise_from_family(
         op_name,
         variant0,
         variant1,
-        fallback_float64=fallback_float64,
         prepare_input=prepare_input,
+        supported_dtypes=supported_dtypes,
     )

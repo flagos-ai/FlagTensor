@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 
 import pytest
@@ -6,7 +20,20 @@ import torch
 from flagtensor import relu
 from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_RELU_BENCHMARK_SHAPES
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorRelu
+from flagtensor.cutensor import CUTENSOR_AVAILABLE
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
+try:
+    from flagtensor.cutensor import CuTensorRelu as _BaselineClass
+except ImportError:
+    _BaselineClass = None
+try:
+    from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+except ImportError:
+    _TORCH_NPU_AVAILABLE = lambda: False
+BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_RELU"
@@ -33,7 +60,7 @@ class ReluBenchmark(Benchmark):
     def baseline_impl(self, x):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorRelu(dtype=x.dtype)
+            baseline = self._get_baseline_instance(x.dtype)
             self.baselines[x.dtype] = baseline
         baseline.prepare(x)
         return baseline(x)
@@ -47,10 +74,10 @@ class ReluBenchmark(Benchmark):
 
 @pytest.mark.performance
 def test_relu_perf():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
+    if not BASELINE_AVAILABLE:
+        pytest.skip("Vendor baseline unavailable")
 
     bench = ReluBenchmark()
     results = bench.run()
@@ -59,6 +86,6 @@ def test_relu_perf():
     for result in results:
         print(
             f"shape={result.shape} dtype={result.dtype} "
-            f"triton_ms={result.latency:.6f} cutensor_ms={result.latency_base:.6f} "
+            f"triton_ms={result.latency:.6f} baseline_ms={result.latency_base:.6f} "
             f"speedup={result.speedup:.3f}x"
         )

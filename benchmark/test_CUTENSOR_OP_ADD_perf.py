@@ -1,14 +1,39 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 
 import pytest
 import torch
-import triton
 
 from flagtensor import add
 from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
 from flagtensor.config import DEFAULT_ADD_BENCHMARK_SHAPES, DEFAULT_BENCHMARK_DTYPES
-from flagtensor.cutensor import CUTENSOR_AVAILABLE, CuTensorAdd
-from flagtensor.ops.CUTENSOR_OP_ADD import _add_kernel
+from flagtensor.cutensor import CUTENSOR_AVAILABLE
+from flagtensor.runtime import (
+    device_str as _device_str,
+    is_accelerator_available as _is_accelerator_available,
+)
+try:
+    from flagtensor.cutensor import CuTensorAdd as _BaselineClass
+except ImportError:
+    _BaselineClass = None
+try:
+    from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+except ImportError:
+    _TORCH_NPU_AVAILABLE = lambda: False
+BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_ADD"
@@ -38,7 +63,9 @@ class AddBenchmark(Benchmark):
     def baseline_impl(self, x, y):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorAdd(dtype=x.dtype)
+            baseline = self._get_baseline_instance(x.dtype)
+            if baseline is None:
+                raise RuntimeError("No vendor baseline available for ADD on this device")
             self.baselines[x.dtype] = baseline
         baseline.prepare(x, y)
         return baseline(x, y)
@@ -50,32 +77,27 @@ class AddBenchmark(Benchmark):
         return x + y
 
     def build_triton_kernel_callable(self, x, y):
-        z = torch.empty_like(x)
-        n_elements = z.numel()
-        grid = lambda meta: (
-            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-        )
-
         def run_kernel():
-            _add_kernel[grid](x, y, z, n_elements)
-            return z
+            return add(x, y)
 
         return run_kernel
 
     def build_baseline_kernel_callable(self, x, y):
         baseline = self.baselines.get(x.dtype)
         if baseline is None:
-            baseline = CuTensorAdd(dtype=x.dtype)
+            baseline = self._get_baseline_instance(x.dtype)
+            if baseline is None:
+                return None
             self.baselines[x.dtype] = baseline
         return baseline.build_kernel_callable(x, y)
 
 
 @pytest.mark.performance
 def test_add_perf():
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA unavailable")
-    if not CUTENSOR_AVAILABLE:
-        pytest.skip("cuTensor unavailable")
+    if not _is_accelerator_available():
+        pytest.skip("Accelerator unavailable")
+    if not BASELINE_AVAILABLE:
+        pytest.skip("Vendor baseline unavailable")
 
     bench = AddBenchmark()
     results = bench.run()
@@ -84,6 +106,6 @@ def test_add_perf():
     for result in results:
         print(
             f"shape={result.shape} dtype={result.dtype} "
-            f"triton_ms={result.latency:.6f} cutensor_ms={result.latency_base:.6f} "
+            f"triton_ms={result.latency:.6f} baseline_ms={result.latency_base:.6f} "
             f"speedup={result.speedup:.3f}x"
         )

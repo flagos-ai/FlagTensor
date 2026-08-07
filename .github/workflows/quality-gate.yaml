@@ -1,0 +1,91 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: FlagTensor Lint & Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Run pre-commit
+        run: |
+          pip install pre-commit
+          SKIP=flake8,isort,black,clang-format pre-commit run --all-files --show-diff-on-failure
+
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build twine
+      - name: Build package
+        run: python -m build
+      - name: Check package
+        run: twine check dist/*
+
+  registry-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install deps
+        run: python -m pip install PyYAML
+      - name: Check registry
+        run: |
+          python - <<'PY'
+          import sys, yaml
+          from pathlib import Path
+          with open("conf/operators.yaml") as f:
+              ops = yaml.safe_load(f)["ops"]
+          errors = []
+          for op in ops:
+              name = op["name"]
+              impl = Path(op["impl_file"])
+              if not impl.exists():
+                  errors.append(f"Missing impl: {name} -> {impl}")
+              for cat in ("unary","binary","contraction","sparse"):
+                  per_op = Path("tests") / cat / f"test_{name}.py"
+                  if per_op.exists():
+                      break
+              else:
+                  errors.append(f"Missing test: {name}")
+          if errors:
+              print("Registry errors:"); [print(f"  - {e}") for e in errors]; sys.exit(1)
+          active = sum(1 for o in ops if o.get("status","") != "blocked")
+          print(f"OK: {len(ops)} operators ({active} active)")
+          PY

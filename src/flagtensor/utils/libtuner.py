@@ -1,6 +1,21 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import hashlib
 import inspect
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -10,6 +25,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import triton
+
+logger = logging.getLogger(__name__)
 
 from flagtensor.runtime import device, torch_device_fn
 
@@ -196,7 +213,7 @@ class LibCache(object):
         if db_path is None:
             try:
                 device_name = torch_device_fn.get_device_name().replace(" ", "_")
-            except AttributeError:
+            except (AttributeError, RuntimeError):
                 device_name = device.name
             cache_file_name = f"TunedConfig_{device_name}_triton_{major}_{minor}.db"
             db_path = _config_cache_dir() / cache_file_name
@@ -375,9 +392,11 @@ class LibTuner(triton.runtime.Autotuner):
             config = self.configs[0]
         self.best_config = config
         if os.getenv("TRITON_PRINT_AUTOTUNING") == "1" and not used_cached_result:
-            print(
-                f"Triton autotuning for function {self.base_fn.__name__} finished after "
-                f"{self.bench_time:.2f}s; best config selected: {self.best_config};"
+            logger.info(
+                "Triton autotuning for function %s finished after %.2fs; best config selected: %s;",
+                self.base_fn.__name__,
+                self.bench_time,
+                self.best_config,
             )
         if config.pre_hook is not None:
             full_nargs = {**self.nargs, **kwargs, **_config_all_kwargs(config)}

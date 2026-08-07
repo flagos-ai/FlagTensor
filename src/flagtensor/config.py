@@ -1,72 +1,202 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 
-DEFAULT_BENCHMARK_DTYPES = [torch.float16, torch.float32]
-DEFAULT_CORRECTNESS_DTYPES = [torch.float16, torch.float32, torch.float64]
-DEFAULT_IDENTITY_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_IDENTITY_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_SQRT_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_SQRT_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_RELU_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_RELU_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
+from flagtensor.runtime.dtype_capability import dtype_capability
+
+# Default dtypes for benchmarking — float types only, no FP8.
+# FP8 is excluded because A100 (Ampere) does not support FP8 kernel operations
+# (torch.randn for float8_e5m2 raises RuntimeError).
+_FP8_DTYPES = {torch.float8_e4m3fn, torch.float8_e5m2, torch.float8_e4m3fnuz, torch.float8_e5m2fnuz}
+DEFAULT_BENCHMARK_DTYPES = [
+    d for d in dtype_capability.supported_dtypes
+    if d.is_floating_point and d not in _FP8_DTYPES
+]
+# Default dtypes for correctness testing (inference path).
+# FP8 / INT8 are excluded because torch.randn / torch.randint don't support them
+# and each op that does support them declares its own dtype set.
+DEFAULT_CORRECTNESS_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+# ── Elementwise benchmark shapes: 1D pow2 + multi-dimensional ─────────────
+_ELEMENTWISE_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)] + [
+    (128, 128), (32, 64, 16), (64, 256), (16, 64, 64),
+    (256, 512), (128, 1024), (64, 64, 64), (128, 128, 64),
+]
+
+DEFAULT_IDENTITY_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_SQRT_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_RELU_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
 DEFAULT_CONJ_BENCHMARK_DTYPES = [torch.complex64, torch.complex128]
 DEFAULT_CONJ_CORRECTNESS_DTYPES = [torch.complex64, torch.complex128]
-DEFAULT_CONJ_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_CONJ_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_RCP_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_RCP_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_SIGMOID_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_SIGMOID_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_TANH_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_TANH_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_ABS_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_ABS_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_EXP_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_EXP_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_LOG_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_LOG_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_NEG_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_NEG_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_SIN_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_SIN_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_COS_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_COS_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_TAN_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_TAN_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_SINH_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_SINH_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_COSH_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_COSH_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_ASIN_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_ASIN_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_ACOS_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_ACOS_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_ATAN_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_ATAN_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_ASINH_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_ASINH_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_ACOSH_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_ACOSH_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_ATANH_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_ATANH_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_CEIL_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_CEIL_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_FLOOR_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_FLOOR_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_MISH_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_MISH_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_SWISH_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_SWISH_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_SOFT_PLUS_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_SOFT_PLUS_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_SOFT_SIGN_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_SOFT_SIGN_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_ADD_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_ADD_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_MUL_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_MUL_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_MAX_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_MAX_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
-DEFAULT_MIN_BENCHMARK_SHAPES = [(2**i,) for i in range(10, 24)]
-DEFAULT_MIN_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
+DEFAULT_CONJ_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_RCP_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_SIGMOID_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_TANH_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ABS_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_EXP_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_LOG_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_NEG_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_SIN_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_COS_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_TAN_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_SINH_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_COSH_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ASIN_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ACOS_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ATAN_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ASINH_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ACOSH_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ATANH_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_CEIL_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_FLOOR_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_MISH_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_SWISH_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_SOFT_PLUS_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_SOFT_SIGN_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ADD_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_MUL_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_ADDCMUL_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_FMA_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_MAX_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+DEFAULT_MIN_BENCHMARK_SHAPES = list(_ELEMENTWISE_BENCHMARK_SHAPES)
+
+_CONTRACTION_2D_GEMM_SHAPES = [
+    # tiny / small / medium square
+    ((16, 8), (8, 12)),
+    ((32, 16), (16, 24)),
+    ((64, 32), (32, 48)),
+    ((128, 64), (64, 96)),
+    # medium / large square
+    ((256, 128), (128, 256)),
+    ((512, 256), (256, 512)),
+    # rectangular M >> N  and  M << N
+    ((128, 32), (32, 16)),
+    ((32, 128), (128, 16)),
+    # rectangular tall / wide
+    ((256, 64), (64, 32)),
+    ((64, 256), (256, 32)),
+    # large rectangular
+    ((1024, 256), (256, 512)),
+    ((256, 1024), (1024, 128)),
+]
+
+_CONTRACTION_BATCH_SHAPES = [
+    # small batch
+    ((2, 16, 8), (8, 12)),
+    ((4, 32, 16), (16, 24)),
+    ((8, 64, 32), (32, 48)),
+    # more batches
+    ((16, 128, 64), (64, 96)),
+    ((32, 256, 128), (128, 256)),
+    # batched A + 2D B
+    ((4, 128, 32), (32, 16)),
+    ((8, 32, 128), (128, 16)),
+    # 3D both batched
+    ((3, 8, 16), (16, 10)),
+    ((5, 16, 32), (32, 20)),
+]
+
+# ── Contraction benchmark shapes ──────────────────────────────────────────
+# GETT & gett-like (standard matmul + batched matmul)
+DEFAULT_GETT_BENCHMARK_SHAPES = _CONTRACTION_2D_GEMM_SHAPES + _CONTRACTION_BATCH_SHAPES
+
+# TGETT (transpose-A then matmul) — shapes adjusted so A.shape[0]==B.shape[0]
+# GETT shapes are ((M,K),(K,N)) and ((B,M,K),(K,N)); TGETT swaps A's last two dims.
+DEFAULT_TGETT_BENCHMARK_SHAPES = [
+    ((a[1], a[0]), b) if len(a) == 2 else ((a[0], a[2], a[1]), b)
+    for (a, b) in _CONTRACTION_2D_GEMM_SHAPES + _CONTRACTION_BATCH_SHAPES
+]
+
+# TTGT (transpose both A and B) — only 2D shapes; needs A.shape[0]==B.shape[1]
+DEFAULT_TTGT_BENCHMARK_SHAPES = [
+    ((a[1], a[0]), (b[1], b[0]))
+    for (a, b) in _CONTRACTION_2D_GEMM_SHAPES
+]
+
+# TrinaryContraction  (A * B * C) — chain matmul
+DEFAULT_TENSOR_CONTRACTION_TRINARY_BENCHMARK_SHAPES = [
+    # tiny / small / medium chain
+    ((8, 4), (4, 6), (6, 10)),
+    ((16, 8), (8, 12), (12, 16)),
+    ((32, 16), (16, 24), (24, 32)),
+    ((64, 32), (32, 48), (48, 64)),
+    # medium / large chain
+    ((128, 64), (64, 96), (96, 128)),
+    ((256, 128), (128, 192), (192, 256)),
+    # rectangular links
+    ((64, 16), (16, 128), (128, 32)),
+    ((32, 256), (256, 32), (32, 64)),
+    # large chain
+    ((512, 256), (256, 384), (384, 512)),
+]
+
+# BlockSparse — float32 only, keep moderate size
+DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_BENCHMARK_SHAPES = [
+    ((8, 4), (4, 6)),
+    ((16, 8), (8, 12)),
+    ((32, 16), (16, 24)),
+    ((64, 32), (32, 48)),
+    ((128, 64), (64, 96)),
+    ((256, 128), (128, 192)),
+    ((32, 128), (128, 16)),
+    ((64, 256), (256, 32)),
+]
+
+# ── Correctness test shapes ───────────────────────────────────────────────
+# Pointwise operators share a common set of representative shapes
+_ELEMENTWISE_TEST_SHAPES = [(1024,), (4096,), (128, 128), (32, 64, 16)]
+
+DEFAULT_IDENTITY_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_SQRT_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_RELU_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_CONJ_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_RCP_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_SIGMOID_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_TANH_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ABS_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_EXP_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_LOG_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_NEG_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_SIN_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_COS_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_TAN_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_SINH_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_COSH_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ASIN_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ACOS_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ATAN_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ASINH_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ACOSH_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ATANH_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_CEIL_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_FLOOR_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_MISH_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_SWISH_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_SOFT_PLUS_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_SOFT_SIGN_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ADD_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_MUL_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_ADDCMUL_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_FMA_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_MAX_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+DEFAULT_MIN_TEST_SHAPES = list(_ELEMENTWISE_TEST_SHAPES)
+
+DEFAULT_GETT_TEST_SHAPES = [((64, 32), (32, 48)), ((16, 8), (8, 5)), ((4, 8, 16), (16, 10))]
+DEFAULT_TGETT_TEST_SHAPES = [((32, 64), (32, 48)), ((8, 16), (8, 5)), ((8, 16, 4), (16, 10))]
+DEFAULT_TTGT_TEST_SHAPES = [((64, 32), (48, 64)), ((16, 8), (5, 16)), ((8, 16, 4), (8, 10, 16))]
+DEFAULT_TENSOR_CONTRACTION_TRINARY_TEST_SHAPES = [((32, 16), (16, 8), (8, 12)), ((8, 4), (4, 3), (3, 5))]
+DEFAULT_BLOCK_SPARSE_TENSOR_CONTRACTION_TEST_SHAPES = [((16, 8), (8, 12)), ((32, 16), (16, 24))]
+
 DEFAULT_WARMUP = 50
 DEFAULT_REPETITIONS = 100
