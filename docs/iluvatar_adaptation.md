@@ -257,6 +257,10 @@ op 内 `_supports_fused_triton_trinary()` 恒为 False (fused 在中大尺寸
 | `src/flagtensor/runtime/backend/_iluvatar/tolerances.yaml` | 容差配置 (1e-3 floor) |
 | `src/flagtensor/runtime/backend/_iluvatar/heuristics_config_utils.py` | elementwise heuristics |
 | `docs/iluvatar_adaptation.md` | 本文档 |
+| `docs/iluvatar_env_setup.md` | 从 0 环境搭建指南 (基于 FlagTree) |
+| `docs/iluvatar_performance_report.md` | 完整性能报告 (36 ops, 2158 条测量) |
+| `docs/iluvatar_performance_details.csv` | 性能原始数据 |
+| `docker/Dockerfile.iluvatar` | Docker 交付镜像定义 |
 
 ### 修改文件
 
@@ -267,8 +271,18 @@ op 内 `_supports_fused_triton_trinary()` 恒为 False (fused 在中大尺寸
 | `src/flagtensor/utils/unary_pointwise.py` | `_gen_*.py` 原子写入, 修复多进程竞态 |
 | `src/flagtensor/ops/CUTENSOR_OP_GETT.py` | iluvatar 门控: 4 个 BI-V150 标定 GEMM config + prepared-launcher 冻结 CompiledKernel runner |
 | `benchmark/test_ContractionTrinary_perf.py` | fp32 分支计时 two-step GETT (对齐 op 实际派发路径) |
+| `setup.sh` | 重构为多后端脚本 (nvidia/ppu/iluvatar), iluvatar 分支安装 FlagTree |
+| `.gitignore` | 增加 `results/` 与生成的 `iluvatar_env.sh` |
 
 `tools/run_tests.py` 与结果导出格式 **零改动**。
+
+### 环境搭建 (交付)
+
+从 0 搭建环境 (基于 FlagTree) 见 **`docs/iluvatar_env_setup.md`**:
+- `setup.sh --backend iluvatar` 一条命令完成 (FlagTree `0.4.0+iluvatar3.1`,
+  wheel 自带后端插件, 内网可装)
+- `docker/Dockerfile.iluvatar` 为 Docker 交付方式
+- 详细性能数据: `docs/iluvatar_performance_report.md` (36 ops, 2158 条测量)
 
 ## 8. 后续工作建议
 
