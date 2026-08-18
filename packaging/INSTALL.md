@@ -1,26 +1,27 @@
-# Installing python3-flagtensor
+# Installing FlagTensor packages
 
-After `apt install python3-flagtensor` (Debian/Ubuntu) or `dnf install python3-flagtensor` (Fedora),
-install the ML runtime separately — it is intentionally **not** declared as a
-hard Depends/Requires because the distro versions are CPU-only (torch) or
-too old (triton) for GPU workloads.
+FlagTensor is split into a backend-neutral Python package and NVIDIA native
+packages:
 
-FlagTensor needs PyTorch (GPU build) and Triton at runtime:
+- `python3-flagtensor`: Python operators and backend registration.
+- `libflagtensor-nvidia`: CUDA C++ operator runtime and Triton kernel sources.
+- `libflagtensor-nvidia-dev`: headers and CMake package files.
+- `python3-flagtensor-nvidia`: optional Python bindings for the C++ runtime.
 
-```bash
-pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.9.0+cu128
-pip install triton
-```
+The native packages consume `libtriton-jit-nvidia` from the FlagOS package
+repository. Their PyTorch, Triton, Python, and CUDA versions must match the
+matrix used to build that runtime. The packaging build therefore uses the same
+CUDA 12.8 / Python 3.12 / PyTorch 2.10 environment as libtriton_jit.
+The RPM build likewise matches its CUDA 12.6 / Python 3.9 / PyTorch 2.8 /
+Triton 3.4 ABI matrix.
 
-A `venv` is recommended to isolate pip-installed packages from the system
-Python:
+GPU-enabled PyTorch and Triton remain vendor runtime dependencies. They are not
+replaced with distro `python3-torch`, which is generally CPU-only. On the DEB
+target, matplotlib must also come from the Python 3.12 vendor environment:
+Ubuntu 22.04's package pulls in a CPython 3.10 NumPy extension that is not ABI
+compatible with the validated runtime.
 
-```bash
-python3 -m venv ~/.venv/flagos
-source ~/.venv/flagos/bin/activate
-# then the pip install lines above
-```
-
-Note: the distro `python3-torch` package (CPU-only build) is intentionally
-not pulled in — FlagOS workloads need a GPU build, which PyTorch upstream
-distributes via PyPI (per-CUDA-version wheels), not as a `.deb` / `.rpm`.
+For pre-publication validation, place the runtime and development packages from
+libtriton_jit CI under `packaging/debian/local-deps/` or
+`packaging/rpm/local-deps/`. These binary files are ignored by Git; normal CI
+installs the same packages from FlagOS Nexus.
