@@ -20,3 +20,9 @@ weekly_op_test.txt
 *.html
 !docs/**/*.html
 tools/speedup_analysis*/
+packaging/debian/local-deps/*
+!packaging/debian/local-deps/.gitkeep
+packaging/rpm/local-deps/*
+!packaging/rpm/local-deps/.gitkeep
+debian-packages/
+rpm-packages/
