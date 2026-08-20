@@ -4,6 +4,8 @@ __pycache__/
 *.pyd
 .pytest_cache/
 .hypothesis/
+results/
+iluvatar_env.sh
 benchmark/chart*/
 benchmark/results_backup*/
 benchmark/results/

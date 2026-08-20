@@ -1,0 +1,72 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# FlagTensor on Iluvatar CoreX (天数智芯), FlagTree-based.
+#
+# The base image must already contain the Iluvatar CoreX SDK (driver
+# user-mode libs + toolkit under /usr/local/corex-<ver>) and the CoreX
+# PyTorch build. Ask your Iluvatar contact for the official base image.
+#
+# Build:
+#   docker build -f docker/Dockerfile.iluvatar \
+#     --build-arg COREX_BASE=<your-corex-base-image> \
+#     --build-arg COREX_VERSION=4.4.0 \
+#     -t flagtensor:iluvatar .
+#
+# Run (pass through the Iluvatar devices per the CoreX container guide):
+#   docker run --rm -it --privileged \
+#     -v /dev:/dev --ipc=host --shm-size=16g \
+#     -v $(pwd):/workspace -w /workspace \
+#     flagtensor:iluvatar \
+#     python3 tools/run_tests.py --stages all --gpus 0,1,2,3
+
+ARG COREX_BASE=iluvatar/corex:4.4.0-ubuntu22.04
+FROM ${COREX_BASE}
+
+ARG COREX_VERSION=4.4.0
+
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+# Pin the vendor so runtime detection never falls through to a wrong backend.
+ENV GEMS_VENDOR=iluvatar
+# The FlagTree Triton (pip site-packages) must come BEFORE the CoreX SDK's
+# bundled Triton on sys.path; the SDK's enable script puts its own
+# dist-packages into PYTHONPATH first.
+ENV PYTHONPATH=/usr/local/lib/python3.10/dist-packages:/usr/local/corex-${COREX_VERSION}/lib64/python3/dist-packages
+ENV FLAGTREE_BACKEND_PLUGIN_LIB_DIR=/usr/local/lib/python3.10/dist-packages/triton/_C
+ENV LD_LIBRARY_PATH=/usr/local/corex-${COREX_VERSION}/lib64:/usr/local/lib:${LD_LIBRARY_PATH}
+ENV PATH=/usr/local/corex-${COREX_VERSION}/bin:${PATH}
+
+RUN chmod 1777 /tmp \
+    && apt-get update -qq && apt-get install -y -qq \
+    python3 python3-pip git \
+    && rm -rf /var/lib/apt/lists/*
+
+# FlagTensor + FlagTree (flagtree==0.4.0+iluvatar3.1, bundles the iluvatar
+# backend plugin) via the multi-backend setup script. Verification is
+# skipped at build time because device detection needs a live GPU.
+COPY . /workspace
+WORKDIR /workspace
+RUN FLAGTENSOR_SKIP_VERIFY=1 bash setup.sh --backend iluvatar
+
+# Build-stage sanity: packages that do not need a GPU driver.
+RUN python3 -c "import torch; print('torch:', torch.__version__)" \
+    && python3 -c "import triton; print('triton:', triton.__version__); \
+                   assert 'site-packages' in triton.__file__, 'not the FlagTree Triton'; \
+                   assert hasattr(triton, 'Config'), 'triton OK'" \
+    && echo "=== FlagTensor Iluvatar image built (runtime needs CoreX devices passed through) ==="
+
+# Runtime quick check (inside the container, with devices attached):
+#   python3 -c "import flagtensor; from flagtensor.runtime import device; print(device.vendor_name)"
+#   python3 tools/run_tests.py --ops CUTENSOR_OP_ABS --gpus 0
