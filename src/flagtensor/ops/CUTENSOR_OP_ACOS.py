@@ -16,6 +16,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flagtensor import runtime
 from flagtensor.utils import make_unary_pointwise_from_family
 from flagtensor.runtime import is_ascend as _is_ascend
 
@@ -23,6 +24,13 @@ from flagtensor.runtime import is_ascend as _is_ascend
 @triton.jit
 def _acos_scalar(x):
     return x
+
+
+_MTHREADS_REWRITE_RULES = (
+    ("acos_atan_poly", "acos_atan_poly")
+    if runtime.device.vendor_name == "mthreads"
+    else None
+)
 
 
 _acos_kernel, acos = make_unary_pointwise_from_family(
@@ -34,4 +42,5 @@ _acos_kernel, acos = make_unary_pointwise_from_family(
     config_key=(
         "elementwise_unary_persistent_heavy" if _is_ascend() else None
     ),
+    rewrite_rules=_MTHREADS_REWRITE_RULES,
 )
