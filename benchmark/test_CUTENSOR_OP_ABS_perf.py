@@ -27,7 +27,14 @@ from flagtensor.runtime import (
     device_str as _device_str,
     is_accelerator_available as _is_accelerator_available,
 )
-from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+try:
+    from flagtensor.cutensor import CuTensorAbs as _BaselineClass
+except ImportError:
+    _BaselineClass = None
+try:
+    from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+except ImportError:
+    _TORCH_NPU_AVAILABLE = lambda: False
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_ABS"
@@ -35,9 +42,11 @@ RESULTS_ROOT = os.path.join(os.path.dirname(__file__), "results")
 RESULTS_DIR = os.path.join(RESULTS_ROOT, OP_NAME)
 CSV_PATH = os.path.join(RESULTS_DIR, "benchmark.csv")
 
-# A vendor-optimized baseline is available on NVIDIA (cuTensor) or Ascend
-# (torch_npu-aten / CANN aclnn).
-BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _TORCH_NPU_AVAILABLE()
+# A vendor-optimized baseline is available on NVIDIA (cuTensor), Ascend
+# (torch_npu-aten / CANN aclnn), or any vendor that opts into the benchmark
+# harness via the BASELINE_MODULE_NAME sentinel (e.g. MetaX, whose
+# _metax.baseline exposes a torch_baseline-backed CuTensorAbs).
+BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
 
 
 class AbsBenchmark(Benchmark):

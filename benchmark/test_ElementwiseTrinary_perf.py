@@ -29,9 +29,23 @@ try:
     from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
 except ImportError:
     _TORCH_NPU_AVAILABLE = lambda: False
-# Baseline is available on NVIDIA (cuTensor elementwise_trinary) or Ascend
-# (torch_npu-aten trinary via flagtensor.torch_npu_baseline.CuTensorTrinary).
-BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _TORCH_NPU_AVAILABLE()
+# Baseline is available on NVIDIA (cuTensor elementwise_trinary), Ascend
+# (torch_npu-aten trinary via flagtensor.torch_npu_baseline.CuTensorTrinary),
+# or any vendor that opts into the benchmark harness via the
+# ``BASELINE_MODULE_NAME`` sentinel and exposes ``_get_trinary_executor``
+# (e.g. MetaX, whose baseline module flagtensor.runtime.backend._metax.baseline
+# ships a torch_baseline-backed trinary executor). The vendor-neutral check
+# is additive: NVIDIA/Ascend short-circuit on their own flags above, so
+# their resolution path is unchanged.
+def _vendor_baseline_has_trinary() -> bool:
+    try:
+        mod = Benchmark.__new__(Benchmark)._baseline_module()
+        return mod is not None and hasattr(mod, "_get_trinary_executor")
+    except Exception:
+        return False
+
+
+BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _TORCH_NPU_AVAILABLE() or _vendor_baseline_has_trinary()
 from flagtensor.ops.CUTENSOR_OP_TRINARY_GENERIC import _get_triton_trinary_executor
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
@@ -74,7 +88,10 @@ def _resolve_baseline_executor(dtype):
     """Return a callable ``executor(a, b, c, alpha=, beta=, gamma=, out=, ...)``.
 
     On NVIDIA this is the cuTensor trinary executor; on Ascend it is the
-    torch_npu-aten based ``CuTensorTrinary`` instance.
+    torch_npu-aten based ``CuTensorTrinary`` instance; on any vendor that
+    opts in via ``BASELINE_MODULE_NAME`` (e.g. MetaX) it is the vendor
+    baseline module's ``_get_trinary_executor``. NVIDIA/Ascend are checked
+    first (short-circuit), so their resolution path is unchanged.
     """
     if CUTENSOR_AVAILABLE:
         from flagtensor.cutensor import _get_trinary_executor as _cu_get
@@ -84,21 +101,34 @@ def _resolve_baseline_executor(dtype):
         op_ab = _TRINARY_OP_KWARGS["op_ab"]
         op_abc = _TRINARY_OP_KWARGS["op_abc"]
         return _cu_get(op_ab, op_abc, op_a, op_b, op_c, dtype)
+    if _TORCH_NPU_AVAILABLE():
+        try:
+            from flagtensor.torch_npu_baseline import CuTensorTrinary
+            from flagtensor.cutensor import (
+                UNARY_OPERATOR_MAP, BINARY_OPERATOR_MAP,
+            )
+            return CuTensorTrinary(
+                op_ab=BINARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_ab"]],
+                op_abc=BINARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_abc"]],
+                op_a=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_a"]],
+                op_b=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_b"]],
+                op_c=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_c"]],
+                dtype=dtype,
+            )
+        except Exception:
+            pass
+    # Vendor-neutral fallback (MetaX and any BASELINE_MODULE_NAME vendor).
     try:
-        from flagtensor.torch_npu_baseline import CuTensorTrinary
-        from flagtensor.cutensor import (
-            UNARY_OPERATOR_MAP, BINARY_OPERATOR_MAP,
-        )
-        return CuTensorTrinary(
-            op_ab=BINARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_ab"]],
-            op_abc=BINARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_abc"]],
-            op_a=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_a"]],
-            op_b=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_b"]],
-            op_c=UNARY_OPERATOR_MAP[_TRINARY_OP_KWARGS["op_c"]],
-            dtype=dtype,
-        )
+        mod = Benchmark.__new__(Benchmark)._baseline_module()
+        if mod is not None and hasattr(mod, "_get_trinary_executor"):
+            return mod._get_trinary_executor(
+                _TRINARY_OP_KWARGS["op_ab"], _TRINARY_OP_KWARGS["op_abc"],
+                _TRINARY_OP_KWARGS["op_a"], _TRINARY_OP_KWARGS["op_b"],
+                _TRINARY_OP_KWARGS["op_c"], dtype,
+            )
     except Exception:
-        return None
+        pass
+    return None
 
 
 class TrinaryGenericBenchmark(Benchmark):

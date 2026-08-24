@@ -117,6 +117,62 @@ class BenchmarkMetrics:
         return asdict(self)
 
 
+# ---------------------------------------------------------------------------
+# Vendor-specific benchmark-verify tolerance floor (tolerances.yaml)
+# ---------------------------------------------------------------------------
+# Loads the active vendor's ``tolerances.yaml`` (under
+# ``runtime/backend/_<vendor>/``) and exposes the benchmark-verify floor +
+# per-op overrides. This makes the per-vendor tolerance files functional.
+# NVIDIA's floor is 1e-4 (matches the historical hardcoded floor, so wiring
+# this in is behaviour-preserving on NVIDIA); MetaX/PPU/Iluvatar ship looser
+# floors + contraction-family per-op overrides to absorb GEMM summation-order
+# differences between the Triton kernel and the vendor baseline.
+_VENDOR_TOLERANCES = None
+
+
+def _load_vendor_tolerances() -> dict:
+    global _VENDOR_TOLERANCES
+    if _VENDOR_TOLERANCES is not None:
+        return _VENDOR_TOLERANCES
+    _VENDOR_TOLERANCES = {}
+    try:
+        from flagtensor.runtime import device as _device, backend as _backend
+        import yaml
+        vmod = _backend.get_vendor_module(_device.vendor_name)
+        yaml_path = os.path.join(os.path.dirname(vmod.__file__), "tolerances.yaml")
+        with open(yaml_path) as f:
+            _VENDOR_TOLERANCES = yaml.safe_load(f) or {}
+    except Exception:
+        _VENDOR_TOLERANCES = {}
+    return _VENDOR_TOLERANCES
+
+
+def _get_benchmark_verify_floor(op_name: str):
+    """Return (atol, rtol) floor for benchmark verify, or (None, None).
+
+    Combines the vendor-wide ``benchmark_verify_floor`` with any per-op
+    override in ``benchmark_verify_floor_by_op`` (keyed by op slug, e.g.
+    ``contraction_trinary`` / ``tensor_contraction_trinary``).
+    """
+    tols = _load_vendor_tolerances()
+    floor = tols.get("benchmark_verify_floor") or {}
+    atol = floor.get("atol")
+    rtol = floor.get("rtol")
+    by_op = tols.get("benchmark_verify_floor_by_op") or {}
+    prefix = "CUTENSOR_OP_"
+    slug = op_name[len(prefix):].lower() if op_name.startswith(prefix) else op_name.lower()
+    for cand in (slug, op_name.lower()):
+        override = by_op.get(cand)
+        if override:
+            o_atol = override.get("atol")
+            o_rtol = override.get("rtol")
+            if o_atol is not None:
+                atol = max(atol or 0.0, o_atol)
+            if o_rtol is not None:
+                rtol = max(rtol or 0.0, o_rtol)
+    return atol, rtol
+
+
 class Benchmark:
     def __init__(self, op_name: str, config: Optional[BenchmarkConfig] = None):
         self.op_name = op_name
@@ -165,6 +221,15 @@ class Benchmark:
         # Tensor Core rounding behavior for contractions
         atol = max(atol, 1e-4)
         rtol = max(rtol, 1e-4)
+        # Apply the active vendor's benchmark-verify floor (tolerances.yaml).
+        # NVIDIA's floor is 1e-4 (no behaviour change); vendors without
+        # cuTensor (MetaX/PPU/Iluvatar) ship looser floors + contraction-family
+        # per-op overrides to absorb GEMM summation-order differences.
+        floor_atol, floor_rtol = _get_benchmark_verify_floor(self.op_name)
+        if floor_atol is not None:
+            atol = max(atol, floor_atol)
+        if floor_rtol is not None:
+            rtol = max(rtol, floor_rtol)
         return torch.allclose(reference, test, atol=atol, rtol=rtol)
 
     def _get_op_slug(self) -> str:
@@ -201,6 +266,13 @@ class Benchmark:
         On Ascend this is ``flagtensor.torch_npu_baseline`` (CANN aclnn-backed
         torch_npu aten ops). The two modules expose identically-named
         ``CuTensor{Op}`` classes so the rest of the code is vendor-agnostic.
+
+        Vendors that ship a baseline module exposing the ``CuTensor{Op}``
+        naming convention opt in by setting ``BASELINE_MODULE_NAME`` on
+        their backend module (e.g. Muxi → ``_muxi.baseline``). The sentinel
+        is opt-in: vendors without it keep their existing behaviour
+        (PPU / Iluvatar / T-Head fall through to triton-only timing), so
+        this wiring never changes another backend's resolution path.
         """
         if CUTENSOR_AVAILABLE:
             return importlib.import_module("flagtensor.cutensor")
@@ -208,6 +280,17 @@ class Benchmark:
             mod = importlib.import_module("flagtensor.torch_npu_baseline")
             if mod.torch_npu_available():
                 return mod
+        except Exception:
+            pass
+        try:
+            from flagtensor.runtime import backend as _backend
+            from flagtensor.runtime import device as _device
+            _vmod = _backend.get_vendor_module(_device.vendor_name)
+            _mod_name = getattr(_vmod, "BASELINE_MODULE_NAME", None)
+            if _mod_name:
+                return importlib.import_module(
+                    f"_{_device.vendor_name}.{_mod_name}"
+                )
         except Exception:
             pass
         return None

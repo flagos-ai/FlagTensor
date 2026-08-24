@@ -691,7 +691,14 @@ _BLOCK_SPARSE_CONTRACTION_EXECUTORS = {}
 def _get_gett_executor(dtype):
     executor = _GETT_EXECUTORS.get(dtype)
     if executor is None:
-        executor = CuTensorContraction(dtype=dtype)
+        if CUTENSOR_AVAILABLE:
+            executor = CuTensorContraction(dtype=dtype)
+        else:
+            # No cuTensor on this vendor (e.g. MetaX / Ascend): fall back to
+            # the PyTorch-native contraction baseline (torch.einsum). The
+            # call signature matches CuTensorContraction so callers are
+            # unchanged. On NVIDIA this branch is never taken.
+            executor = _get_torch_contraction_baseline_cls()(dtype=dtype)
         _GETT_EXECUTORS[dtype] = executor
     return executor
 
@@ -699,7 +706,14 @@ def _get_gett_executor(dtype):
 def _get_trinary_contraction_executor(dtype):
     executor = _TRINARY_CONTRACTION_EXECUTORS.get(dtype)
     if executor is None:
-        executor = CuTensorContractionTrinary(dtype=dtype)
+        if CUTENSOR_AVAILABLE:
+            executor = CuTensorContractionTrinary(dtype=dtype)
+        else:
+            # No cuTensor: fall back to the PyTorch-native trinary
+            # contraction baseline. The call signature matches
+            # CuTensorContractionTrinary so callers are unchanged.
+            from flagtensor.torch_baseline import TorchContractionTrinaryBaseline
+            executor = TorchContractionTrinaryBaseline(dtype=dtype)
         _TRINARY_CONTRACTION_EXECUTORS[dtype] = executor
     return executor
 
