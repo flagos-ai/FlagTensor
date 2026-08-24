@@ -15,9 +15,14 @@
 from backend_utils import VendorInfoBase
 
 vendor_info = VendorInfoBase(
-    vendor_name='nvidia', device_name='cuda', device_query_cmd='nvidia-smi'
+    vendor_name='ascend',
+    device_name='npu',
+    device_query_cmd='npu-smi info',
 )
-ARCH_MAP = {'9': 'hopper', '8': 'ampere'}
+# Ascend910 family. torch.npu.get_device_properties().major returns None on
+# current torch_npu builds, so arch specialization is disabled by default.
+# Map major version strings here once torch_npu exposes real capability info.
+ARCH_MAP = {}
 CUSTOMIZED_UNUSED_OPS = ()
 
 __all__ = ['*']

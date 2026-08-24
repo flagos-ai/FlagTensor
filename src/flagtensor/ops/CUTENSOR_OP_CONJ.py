@@ -18,6 +18,7 @@ import triton.language as tl
 
 from flagtensor import runtime
 from flagtensor.utils import libtuner
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 
 
 @libtuner(
@@ -57,7 +58,7 @@ def _conj_kernel(
 
 
 def conj(x: torch.Tensor) -> torch.Tensor:
-    if not x.is_cuda:
+    if not _is_on_accelerator(x):
         raise ValueError("input tensor must be on CUDA")
     if not x.is_complex():
         return x.clone()

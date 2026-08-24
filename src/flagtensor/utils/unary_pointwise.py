@@ -17,10 +17,11 @@ from typing import Callable, Optional, Tuple
 import torch
 import triton
 import triton.language as tl
+
 try:
     # Triton <= 3.3 (e.g. flagtree 0.4.0+3.3 / iluvatar3.1): the direct
     # extern libdevice lives under the cuda namespace. CoreX 3.1 also ships
-    # a top-level triton/language/extra/libdevice.py, but that one is a
+    # a top‑level triton/language/extra/libdevice.py, but that one is a
     # dispatch variant that produces wrong results on this backend — so the
     # cuda path must be tried first.
     from triton.language.extra.cuda import libdevice
@@ -28,15 +29,37 @@ except ImportError:
     try:
         # CoreX Triton >= 3.6 (e.g. flagtree 0.6.1+iluvatar3.6): the cuda
         # namespace is gone; the real extern libdevice moved to
-        # triton.language.extra.corex (the top-level extra/libdevice.py
+        # triton.language.extra.corex (the top‑level extra/libdevice.py
         # there is a signature stub with no implementations).
         from triton.language.extra.corex import libdevice
     except ImportError:
-        # Upstream Triton >= 3.4: real libdevice at the top level.
-        from triton.language.extra import libdevice
+        try:
+            # Upstream Triton >= 3.4: real libdevice at the top level.
+            from triton.language.extra import libdevice
+        except ImportError:
+            # Non‑NVIDIA backends (e.g. triton‑ascend) ship their own libdevice under
+            # a vendor‑specific subpackage. Fall back to the active vendor's module.
+            try:
+                from triton.language.extra.ascend import libdevice  # type: ignore
+            except ImportError:  # pragma: no cover — keeps test collection working
+                libdevice = None  # type: ignore
+
 
 from flagtensor import runtime
+from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 from flagtensor.utils.libtuner import libtuner
+
+
+# ---------------------------------------------------------------------------
+# Vendor flag — triton-ascend's libdevice has precision bugs in asin/acos
+# and a JIT bug in atan2. On NVIDIA we keep the original libdevice calls
+# (faster, more precise, autotuner has two distinct variants to compare).
+# On Ascend we fall back to atan-based mathematically-equivalent forms.
+# ---------------------------------------------------------------------------
+try:
+    _IS_ASCEND = runtime.device.vendor_name == "ascend"
+except Exception:
+    _IS_ASCEND = False
 
 
 _UNARY_FAMILY_RULES = {
@@ -110,21 +133,39 @@ def _build_abs_where_variant(scalar_fn):
 
 @_register_unary_rewrite("acos_libdevice")
 def _build_acos_libdevice_variant(scalar_fn):
+    if _IS_ASCEND:
+        # triton-ascend's libdevice.acos has a precision bug (~3e-4 error).
+        # Fall back to ``pi/2 - atan(x / sqrt(1-x*x))`` which uses only the
+        # well-behaved libdevice.atan path.
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            return pi_over_2 - libdevice.atan(xf / tl.sqrt(1.0 - xf * xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.acos(x.to(tl.float32))
-
     return _variant
 
 
 @_register_unary_rewrite("acos_asin_shift")
 def _build_acos_asin_shift_variant(scalar_fn):
+    if _IS_ASCEND:
+        # Same atan-based fallback as acos_libdevice above.
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            return pi_over_2 - libdevice.atan(xf / tl.sqrt(1.0 - xf * xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         pi_over_2: tl.constexpr = 1.5707963267948966
         xf = x.to(tl.float32)
         return pi_over_2 - libdevice.asin(xf)
-
     return _variant
 
 
@@ -149,20 +190,37 @@ def _build_acosh_log_sqrt_variant(scalar_fn):
 
 @_register_unary_rewrite("asin_libdevice")
 def _build_asin_libdevice_variant(scalar_fn):
+    if _IS_ASCEND:
+        # triton-ascend's libdevice.asin has a precision bug (~3e-4 error).
+        # Fall back to ``atan(x / sqrt(1-x*x))`` which uses only the
+        # well-behaved libdevice.atan path.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            return libdevice.atan(xf / tl.sqrt(1.0 - xf * xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.asin(x.to(tl.float32))
-
     return _variant
 
 
 @_register_unary_rewrite("asin_atan2")
 def _build_asin_atan2_variant(scalar_fn):
+    if _IS_ASCEND:
+        # triton-ascend's libdevice.atan2 is unusable inside JIT functions.
+        # Reuse the atan-based form from asin_libdevice.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            return libdevice.atan(xf / tl.sqrt(1.0 - xf * xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
         return 2 * libdevice.atan2(xf, 1 + tl.sqrt(1 - xf * xf))
-
     return _variant
 
 
@@ -198,11 +256,18 @@ def _build_atan_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("atan_atan2")
 def _build_atan_atan2_variant(scalar_fn):
+    if _IS_ASCEND:
+        # triton-ascend's libdevice.atan2 is unusable inside JIT functions.
+        # atan2(x, 1.0) == atan(x), so use libdevice.atan directly.
+        @triton.jit
+        def _variant(x):
+            return libdevice.atan(x.to(tl.float32))
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
         return libdevice.atan2(xf, 1.0)
-
     return _variant
 
 
@@ -800,8 +865,8 @@ class _UnaryPointwiseExecutor:
         }
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        if not x.is_cuda:
-            raise ValueError("input tensor must be on CUDA")
+        if not _is_on_accelerator(x):
+            raise ValueError("input tensor must be on the active accelerator device")
         if x.dtype not in self._supported:
             raise ValueError(
                 f"unsupported dtype {x.dtype} for unary operator; "
