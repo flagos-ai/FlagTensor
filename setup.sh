@@ -127,16 +127,14 @@ case "$BACKEND" in
     else
       step_fail "no Iluvatar device (need ixsmi or /usr/local/corex)"
     fi
-    # 0.4.0+iluvatar3.1 bundles iluvatarTritonPlugin.so inside the wheel
-    # (validated on BI-V150). Newer iluvatar3.1 builds (0.5.x) require an
-    # external plugin download; iluvatar3.6 builds are cp312-only.
+    # 0.4.0+iluvatar3.1 (cp310) and 0.6.1+iluvatar3.6 (cp312) both bundle
+    # iluvatarTritonPlugin.so inside the wheel (validated on BI-V150).
+    # 0.5.x iluvatar builds require an external plugin download and are
+    # therefore not selected automatically.
     case "$python_mm" in
       3.10) FLAGTREE_SPEC="flagtree==0.4.0+iluvatar3.1" ;;
-      3.12)
-        FLAGTREE_SPEC="flagtree==0.5.1+iluvatar3.1"
-        step_warn "0.5.x iluvatar wheels need an external backend plugin; after install see the FLAGTREE_BACKEND_PLUGIN_LIB_DIR note."
-        ;;
-      *) step_fail "no FlagTree Iluvatar wheel for Python $python_mm (available: cp310: 0.4.0+iluvatar3.1, cp312: 0.5.1+iluvatar3.1 / 0.6.1+iluvatar3.6)" ;;
+      3.12) FLAGTREE_SPEC="flagtree==0.6.1+iluvatar3.6" ;;
+      *) step_fail "no FlagTree Iluvatar wheel for Python $python_mm (available: cp310: 0.4.0+iluvatar3.1, cp312: 0.6.1+iluvatar3.6)" ;;
     esac
     ;;
 esac

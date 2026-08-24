@@ -9,14 +9,18 @@
 | 组件 | 版本 | 来源 | 说明 |
 |------|------|------|------|
 | CoreX SDK | 4.4.0 (例子) | 天数提供 | 提供驱动库、ixsmi、CoreX 版 PyTorch |
-| FlagTree | 0.4.0+iluvatar3.1 | FlagOS 内部源 | FlagOS 维护的 Triton 发行版 (Iluvatar 变体) |
+| FlagTree | 0.4.0+iluvatar3.1 (py3.10) / 0.6.1+iluvatar3.6 (py3.12) | FlagOS 内部源 | FlagOS 维护的 Triton 发行版 (Iluvatar 变体) |
 | FlagTensor | 本仓库 | GitHub | `pip install -e .` |
 
-**为什么 FlagTree 选 `0.4.0+iluvatar3.1`**: 该 wheel 把 Iluvatar 后端插件
-(`iluvatarTritonPlugin.so`) 直接打包在 wheel 内, pip 安装即可用。
-更新的 `0.5.x+iluvatar3.1` 需要从 GitHub Releases 额外下载插件
-(内网环境常不可达); `0.6.x+iluvatar3.6` 只有 cp312 wheel 且未经验证。
-0.4.0 代际也与 NVIDIA 交付所选的 `0.4.0+3.3` 对齐。
+**FlagTree 选版原则**: setup.sh 按 Python 版本自动选择 ——
+- **Python 3.10 → `0.4.0+iluvatar3.1`** (Triton 3.1): wheel 内自带
+  `iluvatarTritonPlugin.so`, pip 安装即可用; 与 NVIDIA 交付的
+  `0.4.0+3.3` 同代际。
+- **Python 3.12 → `0.6.1+iluvatar3.6`** (Triton 3.6): 同样自带后端插件
+  (已核对 wheel 内容)。FlagTensor 已兼容 Triton 3.6 的
+  `triton.language.extra.libdevice` 新路径。
+- 避免选择 `0.5.x+iluvatar3.1`: 需要从 GitHub Releases 额外下载后端
+  插件 (内网环境常不可达)。
 
 ## 2. 方式一 (推荐): setup.sh 裸机/虚机从 0 搭建
 
@@ -25,6 +29,9 @@
 ```bash
 git clone https://github.com/flagos-ai/FlagTensor.git
 cd FlagTensor
+
+# 在合入 main 之前, 先切到 iluvatar 分支 (天数适配在该分支上)
+git checkout iluvatar
 
 # 自动检测 (有天数卡时识别为 iluvatar); 也可显式指定
 ./setup.sh                      # = ./setup.sh --backend iluvatar
@@ -111,11 +118,10 @@ export LD_LIBRARY_PATH=$FLAGTREE_BACKEND_PLUGIN_LIB_DIR:$LD_LIBRARY_PATH
 
 **Q3: Python 3.12 环境怎么办**
 
-`flagtree==0.5.1+iluvatar3.1` 有 cp312 wheel (setup.sh 会自动选择), 但需
-额外下载后端插件并设置 `FLAGTREE_BACKEND_PLUGIN_LIB_DIR`
-(插件 URL 见 FlagTree releases; 内网环境建议改用 Python 3.10 方案)。
-`0.6.1+iluvatar3.6` (cp312) 未经验证, 如需尝试:
-`FLAGTREE_PKG='flagtree==0.6.1+iluvatar3.6' ./setup.sh --backend iluvatar`。
+setup.sh 会自动选择 `flagtree==0.6.1+iluvatar3.6` (cp312, 自带后端插件)。
+FlagTensor 需要 iluvatar 分支 (已兼容 Triton 3.6 的
+`triton.language.extra.libdevice` 路径; main 分支在 Triton 3.6 下会因
+`triton.language.extra.cuda` 已移除而无法导入)。
 
 **Q4: 没有外网/内部源不通**
 
