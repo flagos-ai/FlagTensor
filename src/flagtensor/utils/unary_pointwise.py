@@ -152,6 +152,34 @@ def _build_acos_asin_shift_variant(scalar_fn):
     return _variant
 
 
+@_register_unary_rewrite("acos_atan_poly")
+def _build_acos_atan_poly_variant(scalar_fn):
+    @triton.jit
+    def _variant(x):
+        pi_over_2: tl.constexpr = 1.5707963267948966
+        xf = x.to(tl.float32)
+        atan_x = xf / tl.sqrt(1.0 - xf * xf)
+        ax = tl.abs(atan_x)
+        use_recip = ax > 1.0
+        z = tl.where(use_recip, 1.0 / ax, ax)
+        t = z * z
+        p = 0.003049968053146109
+        p = p * t + -0.01682744845907338
+        p = p * t + 0.04385559893427329
+        p = p * t + -0.07596809856142807
+        p = p * t + 0.10681421027256047
+        p = p * t + -0.1421319619537072
+        p = p * t + 0.19993716142481666
+        p = p * t + -0.33333120780994563
+        p = p * t + 0.9999999880828081
+        result = z * p
+        result = tl.where(use_recip, pi_over_2 - result, result)
+        result = tl.where(atan_x < 0, -result, result)
+        return pi_over_2 - result
+
+    return _variant
+
+
 @_register_unary_rewrite("acosh_libdevice")
 def _build_acosh_libdevice_variant(scalar_fn):
     @triton.jit
@@ -207,6 +235,33 @@ def _build_asin_atan2_variant(scalar_fn):
     return _variant
 
 
+@_register_unary_rewrite("asin_atan_poly")
+def _build_asin_atan_poly_variant(scalar_fn):
+    @triton.jit
+    def _variant(x):
+        pi_over_2: tl.constexpr = 1.5707963267948966
+        xf = x.to(tl.float32)
+        atan_x = xf / tl.sqrt(1.0 - xf * xf)
+        ax = tl.abs(atan_x)
+        use_recip = ax > 1.0
+        z = tl.where(use_recip, 1.0 / ax, ax)
+        t = z * z
+        p = 0.003049968053146109
+        p = p * t + -0.01682744845907338
+        p = p * t + 0.04385559893427329
+        p = p * t + -0.07596809856142807
+        p = p * t + 0.10681421027256047
+        p = p * t + -0.1421319619537072
+        p = p * t + 0.19993716142481666
+        p = p * t + -0.33333120780994563
+        p = p * t + 0.9999999880828081
+        result = z * p
+        result = tl.where(use_recip, pi_over_2 - result, result)
+        return tl.where(atan_x < 0, -result, result)
+
+    return _variant
+
+
 @_register_unary_rewrite("asinh_libdevice")
 def _build_asinh_libdevice_variant(scalar_fn):
     @triton.jit
@@ -252,6 +307,35 @@ def _build_atan_atan2_variant(scalar_fn):
         xf = x.to(tl.float32)
         return libdevice.atan2(xf, 1.0)
     return _variant
+
+
+def _make_atan_poly_variant():
+    @triton.jit
+    def _variant(x):
+        pi_over_2: tl.constexpr = 1.5707963267948966
+        ax = tl.abs(x.to(tl.float32))
+        use_recip = ax > 1.0
+        z = tl.where(use_recip, 1.0 / ax, ax)
+        t = z * z
+        p = 0.003049968053146109
+        p = p * t + -0.01682744845907338
+        p = p * t + 0.04385559893427329
+        p = p * t + -0.07596809856142807
+        p = p * t + 0.10681421027256047
+        p = p * t + -0.1421319619537072
+        p = p * t + 0.19993716142481666
+        p = p * t + -0.33333120780994563
+        p = p * t + 0.9999999880828081
+        result = z * p
+        result = tl.where(use_recip, pi_over_2 - result, result)
+        return tl.where(x < 0, -result, result)
+
+    return _variant
+
+
+@_register_unary_rewrite("atan_poly")
+def _build_atan_poly_variant(scalar_fn):
+    return _make_atan_poly_variant()
 
 
 @_register_unary_rewrite("atanh_libdevice")
