@@ -19,14 +19,31 @@ import triton
 import triton.language as tl
 
 try:
+    # Triton <= 3.3 (e.g. flagtree 0.4.0+3.3 / iluvatar3.1): the direct
+    # extern libdevice lives under the cuda namespace. CoreX 3.1 also ships
+    # a top‑level triton/language/extra/libdevice.py, but that one is a
+    # dispatch variant that produces wrong results on this backend — so the
+    # cuda path must be tried first.
     from triton.language.extra.cuda import libdevice
 except ImportError:
-    # Non-NVIDIA backends (e.g. triton-ascend) ship their own libdevice under
-    # a vendor-specific subpackage. Fall back to the active vendor's module.
     try:
-        from triton.language.extra.ascend import libdevice  # type: ignore
-    except ImportError:  # pragma: no cover — keeps test collection working
-        libdevice = None  # type: ignore
+        # CoreX Triton >= 3.6 (e.g. flagtree 0.6.1+iluvatar3.6): the cuda
+        # namespace is gone; the real extern libdevice moved to
+        # triton.language.extra.corex (the top‑level extra/libdevice.py
+        # there is a signature stub with no implementations).
+        from triton.language.extra.corex import libdevice
+    except ImportError:
+        try:
+            # Upstream Triton >= 3.4: real libdevice at the top level.
+            from triton.language.extra import libdevice
+        except ImportError:
+            # Non‑NVIDIA backends (e.g. triton‑ascend) ship their own libdevice under
+            # a vendor‑specific subpackage. Fall back to the active vendor's module.
+            try:
+                from triton.language.extra.ascend import libdevice  # type: ignore
+            except ImportError:  # pragma: no cover — keeps test collection working
+                libdevice = None  # type: ignore
+
 
 from flagtensor import runtime
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
