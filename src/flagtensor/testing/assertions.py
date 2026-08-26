@@ -14,11 +14,13 @@
 
 """Assertion utilities for correctness testing."""
 
+import os
 from typing import Dict
 from typing import Optional
 from typing import Tuple
 
 import torch
+import yaml
 
 DEFAULT_CORRECTNESS_TOLERANCES: Dict[torch.dtype, Tuple[float, float]] = {
     # Integer types — must be bit-exact
@@ -83,6 +85,76 @@ def get_tolerance(
         except Exception:
             pass
     return (default_atol if atol is None else atol, default_rtol if rtol is None else rtol)
+
+
+# ---------------------------------------------------------------------------
+# Vendor-specific benchmark-verify floor tolerance
+# ---------------------------------------------------------------------------
+# The benchmark harness (Benchmark.verify) compares the Triton kernel output
+# against the vendor baseline with a relaxed floor on top of the dtype
+# default. Each vendor ships a ``_<vendor>/tolerances.yaml`` declaring its
+# floor (e.g. Iluvatar CoreX needs ~1e-3 for contraction-family ops because
+# the CoreX GEMM uses a different summation order than the Triton kernel).
+_VENDOR_FLOOR_CACHE: Dict[str, Tuple[float, float]] = {}
+_VENDOR_FLOOR_BY_OP_CACHE: Dict[Tuple[str, str], Tuple[float, float]] = {}
+_VENDOR_YAML_CACHE: Dict[str, dict] = {}
+
+
+def _load_vendor_tolerances_yaml(vendor_name: str) -> dict:
+    """Load and cache the raw yaml dict for a vendor's tolerances.yaml."""
+    if vendor_name in _VENDOR_YAML_CACHE:
+        return _VENDOR_YAML_CACHE[vendor_name]
+    data = {}
+    try:
+        backend_dir = os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))
+        )
+        yaml_path = os.path.join(
+            backend_dir, "runtime", "backend",
+            f"_{vendor_name}", "tolerances.yaml",
+        )
+        with open(yaml_path, "r") as f:
+            data = yaml.safe_load(f) or {}
+    except (FileNotFoundError, OSError, ValueError, TypeError):
+        pass
+    _VENDOR_YAML_CACHE[vendor_name] = data
+    return data
+
+
+def get_vendor_benchmark_floor(vendor_name: str, op_slug: Optional[str] = None) -> Tuple[float, float]:
+    """Return the (atol, rtol) floor used by Benchmark.verify() for a vendor.
+
+    Loaded from ``_<vendor>/tolerances.yaml``; falls back to the historical
+    1e-4 floor when the yaml is missing. When ``op_slug`` is provided and the
+    yaml declares a per-op override (e.g. ``benchmark_verify_floor_by_op``),
+    that override takes precedence.
+    """
+    if op_slug is not None:
+        cache_key = (vendor_name, op_slug)
+        if cache_key in _VENDOR_FLOOR_BY_OP_CACHE:
+            return _VENDOR_FLOOR_BY_OP_CACHE[cache_key]
+    else:
+        if vendor_name in _VENDOR_FLOOR_CACHE:
+            return _VENDOR_FLOOR_CACHE[vendor_name]
+
+    data = _load_vendor_tolerances_yaml(vendor_name)
+    floor_cfg = data.get("benchmark_verify_floor", {}) or {}
+    floor = (
+        float(floor_cfg.get("atol", 1e-4)),
+        float(floor_cfg.get("rtol", 1e-4)),
+    )
+    if op_slug is not None:
+        by_op = data.get("benchmark_verify_floor_by_op", {}) or {}
+        op_cfg = by_op.get(op_slug, {}) or {}
+        if op_cfg:
+            floor = (
+                float(op_cfg.get("atol", floor[0])),
+                float(op_cfg.get("rtol", floor[1])),
+            )
+        _VENDOR_FLOOR_BY_OP_CACHE[(vendor_name, op_slug)] = floor
+    else:
+        _VENDOR_FLOOR_CACHE[vendor_name] = floor
+    return floor
 
 
 def assert_close(
