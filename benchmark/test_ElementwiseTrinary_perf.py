@@ -18,7 +18,7 @@ import pytest
 import torch
 
 from flagtensor import elementwise_trinary
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES
 from flagtensor.cutensor import CUTENSOR_AVAILABLE
 from flagtensor.runtime import (
@@ -29,14 +29,12 @@ try:
     from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
 except ImportError:
     _TORCH_NPU_AVAILABLE = lambda: False
-# Baseline is available on NVIDIA (cuTensor elementwise_trinary), Ascend
-# (torch_npu-aten trinary via flagtensor.torch_npu_baseline.CuTensorTrinary),
-# or any vendor that opts into the benchmark harness via the
-# ``BASELINE_MODULE_NAME`` sentinel and exposes ``_get_trinary_executor``
-# (e.g. MetaX, whose baseline module flagtensor.runtime.backend._metax.baseline
-# ships a torch_baseline-backed trinary executor). The vendor-neutral check
-# is additive: NVIDIA/Ascend short-circuit on their own flags above, so
-# their resolution path is unchanged.
+
+    
+# A trinary baseline is available on NVIDIA (cuTensor), Ascend
+# (torch_npu-aten / CANN aclnn), vendors exposing a trinary executor
+# through BASELINE_MODULE_NAME (e.g. MetaX), or vendor backends that
+# declare BASELINE_AVAILABLE (e.g. Iluvatar CoreX).
 def _vendor_baseline_has_trinary() -> bool:
     try:
         mod = Benchmark.__new__(Benchmark)._baseline_module()
@@ -45,7 +43,13 @@ def _vendor_baseline_has_trinary() -> bool:
         return False
 
 
-BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _TORCH_NPU_AVAILABLE() or _vendor_baseline_has_trinary()
+BASELINE_AVAILABLE = (
+    CUTENSOR_AVAILABLE
+    or _TORCH_NPU_AVAILABLE()
+    or _vendor_baseline_has_trinary()
+    or vendor_baseline_available()
+)
+
 from flagtensor.ops.CUTENSOR_OP_TRINARY_GENERIC import _get_triton_trinary_executor
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 

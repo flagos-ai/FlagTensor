@@ -19,7 +19,7 @@ import torch
 import triton
 
 from flagtensor import abs
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, vendor_baseline_available
 from flagtensor.config import DEFAULT_ABS_BENCHMARK_SHAPES, DEFAULT_BENCHMARK_DTYPES
 from flagtensor.cutensor import CUTENSOR_AVAILABLE
 from flagtensor.ops.CUTENSOR_OP_ABS import _abs_kernel
@@ -43,10 +43,12 @@ RESULTS_DIR = os.path.join(RESULTS_ROOT, OP_NAME)
 CSV_PATH = os.path.join(RESULTS_DIR, "benchmark.csv")
 
 # A vendor-optimized baseline is available on NVIDIA (cuTensor), Ascend
-# (torch_npu-aten / CANN aclnn), or any vendor that opts into the benchmark
-# harness via the BASELINE_MODULE_NAME sentinel (e.g. MetaX, whose
-# _metax.baseline exposes a torch_baseline-backed CuTensorAbs).
-BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
+BASELINE_AVAILABLE = (
+    CUTENSOR_AVAILABLE
+    or _TORCH_NPU_AVAILABLE()
+    or _BaselineClass is not None
+    or vendor_baseline_available()
+)
 
 
 class AbsBenchmark(Benchmark):

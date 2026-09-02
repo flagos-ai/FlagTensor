@@ -18,7 +18,7 @@ import pytest
 import torch
 
 from flagtensor import contraction_trinary
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, get_vendor_baseline_class, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_TENSOR_CONTRACTION_TRINARY_BENCHMARK_SHAPES
 from flagtensor.cutensor import CUTENSOR_AVAILABLE
 from flagtensor.runtime import (
@@ -34,13 +34,15 @@ try:
 except ImportError:
     _TORCH_NPU_AVAILABLE = lambda: False
 BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
-try:
+# Operator-mode baseline: the full A@B@C chain. NVIDIA -> cuTensor chain
+# executor; Ascend -> torch_npu chain; other vendors -> vendor-native chain
+# baseline (e.g. Iluvatar CoreX PyTorch-native).
+if CUTENSOR_AVAILABLE:
     from flagtensor.cutensor import CuTensorContractionTrinary as _ContractionTrinaryBaseline
-except ImportError:
-    try:
-        from flagtensor.torch_npu_baseline import CuTensorContractionTrinary as _ContractionTrinaryBaseline
-    except ImportError:
-        _ContractionTrinaryBaseline = None
+elif _TORCH_NPU_AVAILABLE():
+    from flagtensor.torch_npu_baseline import CuTensorContractionTrinary as _ContractionTrinaryBaseline
+else:
+    _ContractionTrinaryBaseline = get_vendor_baseline_class("contraction_trinary")
 from flagtensor.ops.CUTENSOR_OP_GETT import _launch_gett_kernel
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 

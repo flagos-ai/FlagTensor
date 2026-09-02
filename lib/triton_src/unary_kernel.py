@@ -10,7 +10,17 @@
 
 import triton
 import triton.language as tl
-from triton.language.extra.cuda import libdevice
+try:
+    # Triton <= 3.3: direct extern libdevice under the cuda namespace.
+    from triton.language.extra.cuda import libdevice
+except ImportError:
+    try:
+        # CoreX Triton >= 3.6: real extern libdevice under extra.corex
+        # (top-level extra/libdevice.py is a signature stub there).
+        from triton.language.extra.corex import libdevice
+    except ImportError:
+        # Upstream Triton >= 3.4: real libdevice at the top level.
+        from triton.language.extra import libdevice
 
 
 @triton.jit

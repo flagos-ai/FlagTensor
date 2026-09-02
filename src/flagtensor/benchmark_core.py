@@ -104,6 +104,46 @@ class BenchmarkConfig:
     mode: str = DEFAULT_MODE
 
 
+def vendor_baseline_available() -> bool:
+    """Return True if the active vendor has a usable benchmark baseline.
+
+    NVIDIA: True iff cuTensor is installed (CUTENSOR_AVAILABLE).
+    Ascend: True iff torch_npu / CANN is available.
+    Other vendors (e.g. Iluvatar CoreX): True iff the vendor backend module
+    declares ``BASELINE_AVAILABLE`` (its PyTorch-native baseline).
+    """
+    try:
+        from flagtensor.runtime import device as _device
+        from flagtensor.runtime.backend import get_vendor_module
+        flag = getattr(
+            get_vendor_module(_device.vendor_name), "BASELINE_AVAILABLE", None
+        )
+        if flag is not None:
+            return bool(flag)
+    except Exception:
+        pass
+    return CUTENSOR_AVAILABLE
+
+
+def get_vendor_baseline_class(op_key: str):
+    """Return the active vendor's baseline class for a registry key.
+
+    ``op_key`` is the vendor ``BASELINE_CLASSES`` registry key, e.g.
+    ``'abs'``, ``'contraction'``, ``'contraction_trinary'``,
+    ``'elementwise_trinary'``. Returns ``None`` when the vendor ships no
+    class for the key (or has no baseline factory at all).
+    """
+    try:
+        from flagtensor.runtime import device as _device
+        from flagtensor.runtime.backend import get_vendor_module
+        factory = getattr(get_vendor_module(_device.vendor_name), "get_baseline_class", None)
+        if factory is not None:
+            return factory(op_key)
+    except Exception:
+        pass
+    return None
+
+
 @dataclass
 class BenchmarkMetrics:
     shape: Tuple[int, ...]
@@ -216,20 +256,41 @@ class Benchmark:
         from flagtensor.testing.assertions import get_tolerance as _get_tol
 
         atol, rtol = _get_tol(dtype)
-        # Relax tolerance for benchmark comparison (10x looser than accuracy tests)
-        # because different GPU archs (Ampere vs Hopper) have slightly different
-        # Tensor Core rounding behavior for contractions
+        
+        # Relax tolerance for benchmark comparison because different
+        # GPU/device architectures may have different rounding and
+        # accumulation behavior.
         atol = max(atol, 1e-4)
         rtol = max(rtol, 1e-4)
-        # Apply the active vendor's benchmark-verify floor (tolerances.yaml).
-        # NVIDIA's floor is 1e-4 (no behaviour change); vendors without
-        # cuTensor (MetaX/PPU/Iluvatar) ship looser floors + contraction-family
-        # per-op overrides to absorb GEMM summation-order differences.
-        floor_atol, floor_rtol = _get_benchmark_verify_floor(self.op_name)
-        if floor_atol is not None:
-            atol = max(atol, floor_atol)
-        if floor_rtol is not None:
-            rtol = max(rtol, floor_rtol)
+
+        # Preserve the existing benchmark-verify floor mechanism
+        # (e.g. MetaX / PPU vendor tolerances and per-op overrides).
+        legacy_atol, legacy_rtol = _get_benchmark_verify_floor(self.op_name)
+        if legacy_atol is not None:
+            atol = max(atol, legacy_atol)
+        if legacy_rtol is not None:
+            rtol = max(rtol, legacy_rtol)
+
+        # Also apply the generic vendor + op-specific benchmark floor
+        # introduced by the backend abstraction (e.g. Iluvatar CoreX).
+        try:
+            from flagtensor.runtime import device as _device
+            from flagtensor.testing.assertions import (
+                get_vendor_benchmark_floor as _get_floor,
+            )
+
+            vendor_atol, vendor_rtol = _get_floor(
+                _device.vendor_name,
+                op_slug=self._get_op_slug(),
+            )
+        except Exception:
+            vendor_atol, vendor_rtol = None, None
+
+        if vendor_atol is not None:
+            atol = max(atol, vendor_atol)
+        if vendor_rtol is not None:
+            rtol = max(rtol, vendor_rtol)
+
         return torch.allclose(reference, test, atol=atol, rtol=rtol)
 
     def _get_op_slug(self) -> str:
@@ -247,7 +308,10 @@ class Benchmark:
         # Some perf files use the legacy CUTENSOR_OP_* op_name even when the
         # underlying op is a Contraction/Trinary variant.
         "CUTENSOR_OP_GETT": "Contraction",
-        "CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY": "ContractionTrinary",
+        # The ContractionTrinary benchmark drives the baseline as two-step
+        # contractions (a@b -> intermediate, then intermediate@c + d), so its
+        # kernel-mode baseline is the plain Contraction class.
+        "CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY": "Contraction",
         "CUTENSOR_OP_TRINARY_GENERIC": "Trinary",
         "CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION": "BlockSparseContraction",
     }
@@ -261,18 +325,22 @@ class Benchmark:
 
     def _baseline_module(self):
         """Return the vendor-native baseline module, or None.
-
-        On NVIDIA this is ``flagtensor.cutensor`` (cuTensor ctypes bindings).
-        On Ascend this is ``flagtensor.torch_npu_baseline`` (CANN aclnn-backed
-        torch_npu aten ops). The two modules expose identically-named
+        The modules expose identically-named
         ``CuTensor{Op}`` classes so the rest of the code is vendor-agnostic.
 
-        Vendors that ship a baseline module exposing the ``CuTensor{Op}``
-        naming convention opt in by setting ``BASELINE_MODULE_NAME`` on
-        their backend module (e.g. Muxi → ``_muxi.baseline``). The sentinel
-        is opt-in: vendors without it keep their existing behaviour
-        (PPU / Iluvatar / T-Head fall through to triton-only timing), so
-        this wiring never changes another backend's resolution path.
+        Vendor baselines can be resolved through either of two mechanisms:
+
+        1. Vendors may opt in by setting ``BASELINE_MODULE_NAME`` on their
+           backend module and exposing the ``CuTensor{Op}`` naming convention
+           (e.g. Muxi -> ``_muxi.baseline``).
+
+        2. Vendors using the backend abstraction may expose a standard baseline
+           module and/or a ``get_baseline_class`` factory
+           (e.g. Iluvatar CoreX -> ``_iluvatar.baseline``).
+
+        Vendors that provide neither mechanism keep their existing behaviour
+        and fall through to Triton-only timing.
+
         """
         if CUTENSOR_AVAILABLE:
             return importlib.import_module("flagtensor.cutensor")
@@ -282,18 +350,76 @@ class Benchmark:
                 return mod
         except Exception:
             pass
+        
+                # Resolve vendor-native baseline modules through either supported
+        # backend mechanism:
+        #
+        # 1. Legacy/vendor-defined BASELINE_MODULE_NAME mechanism
+        #    (e.g. MetaX/Muxi).
+        # 2. Standard backend BASELINE_AVAILABLE mechanism
+        #    (e.g. Iluvatar CoreX).
         try:
             from flagtensor.runtime import backend as _backend
             from flagtensor.runtime import device as _device
-            _vmod = _backend.get_vendor_module(_device.vendor_name)
-            _mod_name = getattr(_vmod, "BASELINE_MODULE_NAME", None)
-            if _mod_name:
-                return importlib.import_module(
-                    f"_{_device.vendor_name}.{_mod_name}"
-                )
+
+            vendor_module = _backend.get_vendor_module(_device.vendor_name)
+
+            # Preserve the BASELINE_MODULE_NAME opt-in mechanism.
+            module_name = getattr(vendor_module, "BASELINE_MODULE_NAME", None)
+            if module_name:
+                try:
+                    return importlib.import_module(
+                        f"_{_device.vendor_name}.{module_name}"
+                    )
+                except Exception:
+                    pass
+
+            # Standard vendor baseline path introduced by the backend
+            # abstraction.
+            if getattr(vendor_module, "BASELINE_AVAILABLE", False):
+                try:
+                    return importlib.import_module(
+                        f"flagtensor.runtime.backend._{_device.vendor_name}.baseline"
+                    )
+                except Exception:
+                    pass
+
         except Exception:
             pass
+
         return None
+
+    def _vendor_baseline_class(self):
+        """Resolve a baseline class through the active vendor's factory.
+
+        Vendor baseline modules (e.g. ``_iluvatar/baseline.py``) expose a
+        ``BASELINE_CLASSES`` registry through the backend module's
+        ``get_baseline_class(op_slug)`` factory. The factory key is derived
+        from the op name: the explicit suffix map first (so e.g.
+        ``CUTENSOR_OP_GETT`` -> ``contraction``), otherwise the raw slug.
+        Returns ``None`` when the vendor has no factory or no class.
+        """
+        suffix = self._OP_NAME_TO_BASELINE_SUFFIX.get(self.op_name)
+        if suffix is not None:
+            import re
+
+            key = re.sub(r"(?<!^)(?=[A-Z])", "_", suffix).lower()
+        else:
+            key = self._get_op_slug()
+
+        try:
+            from flagtensor.runtime import device as _device
+            from flagtensor.runtime.backend import get_vendor_module
+
+            vendor_module = get_vendor_module(_device.vendor_name)
+            factory = getattr(vendor_module, "get_baseline_class", None)
+            if factory is not None:
+                return factory(key)
+        except Exception:
+            pass
+
+        return None
+        
 
     def _get_baseline_instance(self, dtype: torch.dtype):
         baselines = self._get_baseline_store()
@@ -313,6 +439,10 @@ class Benchmark:
             suffix = "".join(part.capitalize() for part in slug.split("_"))
         class_name = f"CuTensor{suffix}"
         baseline_cls = getattr(baseline_module, class_name, None)
+        if baseline_cls is None:
+            # Vendor modules use vendor-specific class names (e.g.
+            # Baseline{Sinh} on iluvatar), so fall back to the vendor factory.
+            baseline_cls = self._vendor_baseline_class()
         if baseline_cls is None:
             return None
         baseline = baseline_cls(dtype=dtype)
