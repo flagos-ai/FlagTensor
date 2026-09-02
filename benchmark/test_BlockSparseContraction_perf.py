@@ -113,7 +113,16 @@ class BlockSparseTensorContractionBenchmark(Benchmark):
             yield a, b, c
 
     def baseline_impl(self, a, b, c):
-        result = self.baseline(a, b, c=c, alpha=1.25, beta=0.5)
+        # Use the vendor-native sparsity-aware baseline (resolved via
+        # _get_baseline_instance). On NVIDIA this is the cuTensor
+        # CuTensorBlockSparseContraction; on MetaX it is the torch_baseline-
+        # backed CuTensorBlockSparseContraction (which applies the output
+        # block-sparsity mask). The previous direct BlockSparseTensorContraction()
+        # path fell through to a dense contraction on vendors without cuTensor,
+        # producing an unmasked result that failed verify() against the masked
+        # reference. Both paths are sparsity-aware on NVIDIA, so no regression.
+        baseline = self._get_baseline_instance(a.dtype)
+        result = baseline(a, (0, 1), b, (1, 2), c, (0, 2), (0, 2), alpha=1.25, beta=0.5)
         # Convert BlockSparseTensor to dense if needed
         if hasattr(result, 'to_dense'):
             return result.to_dense()

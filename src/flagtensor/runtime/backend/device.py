@@ -140,6 +140,12 @@ class DeviceDetector:
                 # torch.cuda, but route to the dedicated iluvatar backend.
                 if "ILUVATAR" in upper_name:
                     return "iluvatar"
+                # MetaX C500/C550 cards report "MetaX ..." and are exposed
+                # through the torch.cuda interface by torch-maca (MACA is
+                # MetaX's CUDA-compatible runtime). Route to the dedicated
+                # metax backend.
+                if upper_name.startswith("METAX"):
+                    return "metax"
                 if "NVIDIA" in upper_name:
                     return "nvidia"
             except Exception:

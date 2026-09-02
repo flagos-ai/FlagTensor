@@ -157,6 +157,62 @@ class BenchmarkMetrics:
         return asdict(self)
 
 
+# ---------------------------------------------------------------------------
+# Vendor-specific benchmark-verify tolerance floor (tolerances.yaml)
+# ---------------------------------------------------------------------------
+# Loads the active vendor's ``tolerances.yaml`` (under
+# ``runtime/backend/_<vendor>/``) and exposes the benchmark-verify floor +
+# per-op overrides. This makes the per-vendor tolerance files functional.
+# NVIDIA's floor is 1e-4 (matches the historical hardcoded floor, so wiring
+# this in is behaviour-preserving on NVIDIA); MetaX/PPU/Iluvatar ship looser
+# floors + contraction-family per-op overrides to absorb GEMM summation-order
+# differences between the Triton kernel and the vendor baseline.
+_VENDOR_TOLERANCES = None
+
+
+def _load_vendor_tolerances() -> dict:
+    global _VENDOR_TOLERANCES
+    if _VENDOR_TOLERANCES is not None:
+        return _VENDOR_TOLERANCES
+    _VENDOR_TOLERANCES = {}
+    try:
+        from flagtensor.runtime import device as _device, backend as _backend
+        import yaml
+        vmod = _backend.get_vendor_module(_device.vendor_name)
+        yaml_path = os.path.join(os.path.dirname(vmod.__file__), "tolerances.yaml")
+        with open(yaml_path) as f:
+            _VENDOR_TOLERANCES = yaml.safe_load(f) or {}
+    except Exception:
+        _VENDOR_TOLERANCES = {}
+    return _VENDOR_TOLERANCES
+
+
+def _get_benchmark_verify_floor(op_name: str):
+    """Return (atol, rtol) floor for benchmark verify, or (None, None).
+
+    Combines the vendor-wide ``benchmark_verify_floor`` with any per-op
+    override in ``benchmark_verify_floor_by_op`` (keyed by op slug, e.g.
+    ``contraction_trinary`` / ``tensor_contraction_trinary``).
+    """
+    tols = _load_vendor_tolerances()
+    floor = tols.get("benchmark_verify_floor") or {}
+    atol = floor.get("atol")
+    rtol = floor.get("rtol")
+    by_op = tols.get("benchmark_verify_floor_by_op") or {}
+    prefix = "CUTENSOR_OP_"
+    slug = op_name[len(prefix):].lower() if op_name.startswith(prefix) else op_name.lower()
+    for cand in (slug, op_name.lower()):
+        override = by_op.get(cand)
+        if override:
+            o_atol = override.get("atol")
+            o_rtol = override.get("rtol")
+            if o_atol is not None:
+                atol = max(atol or 0.0, o_atol)
+            if o_rtol is not None:
+                rtol = max(rtol or 0.0, o_rtol)
+    return atol, rtol
+
+
 class Benchmark:
     def __init__(self, op_name: str, config: Optional[BenchmarkConfig] = None):
         self.op_name = op_name
@@ -200,19 +256,41 @@ class Benchmark:
         from flagtensor.testing.assertions import get_tolerance as _get_tol
 
         atol, rtol = _get_tol(dtype)
-        # Apply vendor+op-specific benchmark-verify floor (see
-        # _<vendor>/tolerances.yaml): NVIDIA/Ascend use the historical 1e-4,
-        # Iluvatar CoreX uses 1e-3 vendor-wide and 5e-3 atol for
-        # contraction-family ops (CoreX GEMM summation order differs from the
-        # Triton kernel).
+        
+        # Relax tolerance for benchmark comparison because different
+        # GPU/device architectures may have different rounding and
+        # accumulation behavior.
+        atol = max(atol, 1e-4)
+        rtol = max(rtol, 1e-4)
+
+        # Preserve the existing benchmark-verify floor mechanism
+        # (e.g. MetaX / PPU vendor tolerances and per-op overrides).
+        legacy_atol, legacy_rtol = _get_benchmark_verify_floor(self.op_name)
+        if legacy_atol is not None:
+            atol = max(atol, legacy_atol)
+        if legacy_rtol is not None:
+            rtol = max(rtol, legacy_rtol)
+
+        # Also apply the generic vendor + op-specific benchmark floor
+        # introduced by the backend abstraction (e.g. Iluvatar CoreX).
         try:
             from flagtensor.runtime import device as _device
-            from flagtensor.testing.assertions import get_vendor_benchmark_floor as _get_floor
-            floor_atol, floor_rtol = _get_floor(_device.vendor_name, op_slug=self._get_op_slug())
+            from flagtensor.testing.assertions import (
+                get_vendor_benchmark_floor as _get_floor,
+            )
+
+            vendor_atol, vendor_rtol = _get_floor(
+                _device.vendor_name,
+                op_slug=self._get_op_slug(),
+            )
         except Exception:
-            floor_atol, floor_rtol = 1e-4, 1e-4
-        atol = max(atol, floor_atol)
-        rtol = max(rtol, floor_rtol)
+            vendor_atol, vendor_rtol = None, None
+
+        if vendor_atol is not None:
+            atol = max(atol, vendor_atol)
+        if vendor_rtol is not None:
+            rtol = max(rtol, vendor_rtol)
+
         return torch.allclose(reference, test, atol=atol, rtol=rtol)
 
     def _get_op_slug(self) -> str:
@@ -247,15 +325,22 @@ class Benchmark:
 
     def _baseline_module(self):
         """Return the vendor-native baseline module, or None.
+        The modules expose identically-named
+        ``CuTensor{Op}`` classes so the rest of the code is vendor-agnostic.
 
-        On NVIDIA this is ``flagtensor.cutensor`` (cuTensor ctypes bindings).
-        On Ascend this is ``flagtensor.torch_npu_baseline`` (CANN aclnn-backed
-        torch_npu aten ops). On every other vendor that ships a baseline
-        module (e.g. Iluvatar CoreX -> ``_iluvatar/baseline.py``,
-        PyTorch-native ops) it is resolved through the backend abstraction.
-        The modules expose identically-named ``CuTensor{Op}`` classes (or a
-        ``get_baseline_class`` factory) so the rest of the code is
-        vendor-agnostic.
+        Vendor baselines can be resolved through either of two mechanisms:
+
+        1. Vendors may opt in by setting ``BASELINE_MODULE_NAME`` on their
+           backend module and exposing the ``CuTensor{Op}`` naming convention
+           (e.g. Muxi -> ``_muxi.baseline``).
+
+        2. Vendors using the backend abstraction may expose a standard baseline
+           module and/or a ``get_baseline_class`` factory
+           (e.g. Iluvatar CoreX -> ``_iluvatar.baseline``).
+
+        Vendors that provide neither mechanism keep their existing behaviour
+        and fall through to Triton-only timing.
+
         """
         if CUTENSOR_AVAILABLE:
             return importlib.import_module("flagtensor.cutensor")
@@ -265,20 +350,44 @@ class Benchmark:
                 return mod
         except Exception:
             pass
-        # Vendor-native baseline module via the backend abstraction. Gated on
-        # the vendor's BASELINE_AVAILABLE flag so that e.g. NVIDIA without
-        # cuTensor still resolves to "no baseline" (historical behaviour).
+        
+                # Resolve vendor-native baseline modules through either supported
+        # backend mechanism:
+        #
+        # 1. Legacy/vendor-defined BASELINE_MODULE_NAME mechanism
+        #    (e.g. MetaX/Muxi).
+        # 2. Standard backend BASELINE_AVAILABLE mechanism
+        #    (e.g. Iluvatar CoreX).
         try:
+            from flagtensor.runtime import backend as _backend
             from flagtensor.runtime import device as _device
-            from flagtensor.runtime.backend import get_vendor_module
-            vendor_module = get_vendor_module(_device.vendor_name)
-            if not getattr(vendor_module, "BASELINE_AVAILABLE", False):
-                return None
-            return importlib.import_module(
-                f"flagtensor.runtime.backend._{_device.vendor_name}.baseline"
-            )
+
+            vendor_module = _backend.get_vendor_module(_device.vendor_name)
+
+            # Preserve the BASELINE_MODULE_NAME opt-in mechanism.
+            module_name = getattr(vendor_module, "BASELINE_MODULE_NAME", None)
+            if module_name:
+                try:
+                    return importlib.import_module(
+                        f"_{_device.vendor_name}.{module_name}"
+                    )
+                except Exception:
+                    pass
+
+            # Standard vendor baseline path introduced by the backend
+            # abstraction.
+            if getattr(vendor_module, "BASELINE_AVAILABLE", False):
+                try:
+                    return importlib.import_module(
+                        f"flagtensor.runtime.backend._{_device.vendor_name}.baseline"
+                    )
+                except Exception:
+                    pass
+
         except Exception:
-            return None
+            pass
+
+        return None
 
     def _vendor_baseline_class(self):
         """Resolve a baseline class through the active vendor's factory.
@@ -293,19 +402,24 @@ class Benchmark:
         suffix = self._OP_NAME_TO_BASELINE_SUFFIX.get(self.op_name)
         if suffix is not None:
             import re
+
             key = re.sub(r"(?<!^)(?=[A-Z])", "_", suffix).lower()
         else:
             key = self._get_op_slug()
+
         try:
             from flagtensor.runtime import device as _device
             from flagtensor.runtime.backend import get_vendor_module
+
             vendor_module = get_vendor_module(_device.vendor_name)
             factory = getattr(vendor_module, "get_baseline_class", None)
             if factory is not None:
                 return factory(key)
         except Exception:
             pass
+
         return None
+        
 
     def _get_baseline_instance(self, dtype: torch.dtype):
         baselines = self._get_baseline_store()

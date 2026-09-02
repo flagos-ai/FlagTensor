@@ -27,7 +27,14 @@ from flagtensor.runtime import (
     device_str as _device_str,
     is_accelerator_available as _is_accelerator_available,
 )
-from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+try:
+    from flagtensor.cutensor import CuTensorAbs as _BaselineClass
+except ImportError:
+    _BaselineClass = None
+try:
+    from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
+except ImportError:
+    _TORCH_NPU_AVAILABLE = lambda: False
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 
 OP_NAME = "CUTENSOR_OP_ABS"
@@ -36,10 +43,11 @@ RESULTS_DIR = os.path.join(RESULTS_ROOT, OP_NAME)
 CSV_PATH = os.path.join(RESULTS_DIR, "benchmark.csv")
 
 # A vendor-optimized baseline is available on NVIDIA (cuTensor), Ascend
-# (torch_npu-aten / CANN aclnn), or any vendor backend that declares
-# BASELINE_AVAILABLE (e.g. Iluvatar CoreX PyTorch-native ops).
 BASELINE_AVAILABLE = (
-    CUTENSOR_AVAILABLE or _TORCH_NPU_AVAILABLE() or vendor_baseline_available()
+    CUTENSOR_AVAILABLE
+    or _TORCH_NPU_AVAILABLE()
+    or _BaselineClass is not None
+    or vendor_baseline_available()
 )
 
 

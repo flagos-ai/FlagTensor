@@ -1,0 +1,80 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Vendor-specific tolerances for MetaX (C500/C550, CUDA-compatible via MACA).
+#
+# These values are the *benchmark-verify floor*: when the benchmark harness
+# compares the Triton kernel output against the baseline output, the
+# effective atol/rtol is max(dtype_default, floor). The dtype defaults
+# come from DEFAULT_CORRECTNESS_TOLERANCES in
+# src/flagtensor/testing/assertions.py (e.g. fp32 → 1.3e-6).
+#
+# MetaX uses a looser floor than NVIDIA (1e-3) because the MetaX baseline
+# (PyTorch-native ops dispatched to the MACA vendor libraries) does not
+# share the GEMM implementation with the Triton kernel, so accumulated FP
+# rounding from different tiling/summation orders shows up in the
+# comparison. The 1e-3 floor gives ample headroom over the typical
+# ~1e-4 differences while remaining tight enough to catch gross
+# regressions (wrong dtype, off-by-factor, NaN/Inf). This matches the
+# PPU / Iluvatar convention.
+#
+# The accuracy tests in tests/ still enforce the strict per-dtype tolerance
+# (1.3e-6 for fp32, widened to 1e-4 on non-NVIDIA backends via
+# get_tolerance in assertions.py); this floor only relaxes the *benchmark*
+# verify path.
+
+benchmark_verify_floor:
+  atol: 1.0e-3
+  rtol: 1.0e-3
+
+# Per-op-category overrides for benchmark verify.
+#
+# Contraction-family ops (Contraction, ContractionTrinary,
+# BlockSparseContraction) need a larger atol on MetaX because the vendor
+# GEMM (mcblas) and the Triton kernel use different GEMM summation
+# orders. On near-zero output elements (|out| < 1) the cancellation
+# amplifies the absolute difference beyond the default 1e-3 floor. The
+# override below raises the atol floor to 5e-3 for these ops only; rtol
+# stays at 1e-3 since large-magnitude outputs agree to <1e-3 relative
+# error.
+#
+# The accuracy tests in tests/ are unaffected (they use the strict
+# per-dtype tolerance from DEFAULT_CORRECTNESS_TOLERANCES).
+#
+# Keys are op-slugs as computed by Benchmark._get_op_slug() (lowercased op
+# name with the CUTENSOR_OP_ prefix stripped). Both the operators.yaml
+# name slug and the OP_NAME slug are listed as aliases so the override
+# takes effect regardless of which entry point computed the slug.
+benchmark_verify_floor_by_op:
+  # Contraction (operators.yaml name) / CUTENSOR_OP_GETT (OP_NAME)
+  contraction:
+    atol: 5.0e-3
+    rtol: 1.0e-3
+  gett:
+    atol: 5.0e-3
+    rtol: 1.0e-3
+  # ContractionTrinary (operators.yaml name) / CUTENSOR_OP_TENSOR_CONTRACTION_TRINARY (OP_NAME)
+  contraction_trinary:
+    atol: 5.0e-3
+    rtol: 1.0e-3
+  tensor_contraction_trinary:
+    atol: 5.0e-3
+    rtol: 1.0e-3
+  # BlockSparseContraction (operators.yaml name) / CUTENSOR_OP_BLOCK_SPARSE_TENSOR_CONTRACTION (OP_NAME)
+  block_sparse_contraction:
+    atol: 5.0e-3
+    rtol: 1.0e-3
+  block_sparse_tensor_contraction:
+    atol: 5.0e-3
+    rtol: 1.0e-3

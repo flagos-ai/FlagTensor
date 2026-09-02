@@ -494,7 +494,22 @@ class TorchContractionTrinaryBaseline:
     def __call__(self, a, b, c, d=None, alpha=1.0, beta=0.0,
                  mode_a=None, mode_b=None, mode_c=None,
                  mode_d=None, mode_e=None, out=None):
-        if not a.is_cuda or not b.is_cuda or not c.is_cuda:
+        if not a.is_cuda or not b.is_cuda:
+            raise ValueError("input tensors must be on CUDA")
+        if c is None:
+            # Plain contraction a@b (no addend): the kernel-mode two-step
+            # GETT path calls the trinary baseline with c=None for the
+            # first contraction (a@b -> intermediate). Delegate to the
+            # underlying plain contraction baseline, using mode_d as the
+            # output mode. (cuTensor's trinary path has the same shape;
+            # this guard only affects the torch_baseline-backed vendors
+            # such as MetaX — NVIDIA uses the cuTensor class.)
+            return self.first(
+                a, b, c=None, alpha=alpha, beta=beta,
+                mode_a=mode_a, mode_b=mode_b,
+                mode_c=mode_d, mode_d=mode_d, out=out,
+            )
+        if not c.is_cuda:
             raise ValueError("input tensors must be on CUDA")
         if a.dtype != b.dtype or a.dtype != c.dtype:
             raise TypeError("input tensors must have the same dtype")

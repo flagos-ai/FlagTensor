@@ -363,6 +363,15 @@ def get_env(gpu_id):
     # Ascend device isolation (CANN / torch_npu)
     env["ASCEND_RT_VISIBLE_DEVICES"] = str(gpu_id)
     env["PYTHONUNBUFFERED"] = "1"
+    # MetaX MACA SDK path — required by triton's metax backend
+    # (``MACA_PATH`` resolves libmc* headers/libs at kernel-compile time).
+    # Preserved from the parent env if set, else defaulted to the standard
+    # install location. Harmless on non-MetaX vendors (unused).
+    if "MACA_PATH" not in env:
+        for _cand in ("/opt/maca", "/opt/maca-3.7.1"):
+            if os.path.isdir(_cand):
+                env["MACA_PATH"] = _cand
+                break
     return env
 
 
