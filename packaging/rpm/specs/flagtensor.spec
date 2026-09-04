@@ -5,7 +5,7 @@
 %global __requires_exclude ^([(]python3([.][0-9]+)?dist[(](torch|triton)[)] .*[)]|python3([.][0-9]+)?dist[(](matplotlib|openpyxl|pyyaml)[)] .*|(libcuda[.]so[.]1|libtorch(_cpu|_cuda|_python)?[.]so|libc10(_cuda)?[.]so)[(][)][(]64bit[)])$
 
 Name:           libflagtensor-nvidia
-Version:        0.1.0
+Version:        0.2.0
 Release:        2%{?dist}
 Summary:        FlagTensor C++ operator runtime (NVIDIA backend)
 
@@ -118,6 +118,11 @@ test -f %{buildroot}%{_libdir}/cmake/FlagTensor/FlagTensorConfig.cmake
 %{python3_sitelib}/flagtensor/c_operators*.so
 
 %changelog
+* Fri Sep 04 2026 FlagOS Contributors <contact@flagos.io> - 0.2.0-1
+- Correct the package version to the v0.2.0 source it actually ships:
+  the packaging was written against the v0.2.0 tag while the metadata
+  still claimed 0.1.0.
+
 * Fri Aug 07 2026 FlagOS Contributors <contact@flagos.io> - 0.1.0-2
 - Build the NVIDIA native runtime and Python extension
 - Link against the system libtriton-jit-nvidia package

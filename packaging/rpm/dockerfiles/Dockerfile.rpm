@@ -31,8 +31,11 @@ RUN rpmdev-setuptree
 COPY . /workspace/FlagTensor
 WORKDIR /workspace/FlagTensor
 
-RUN tar czf /root/rpmbuild/SOURCES/flagtensor-0.1.0.tar.gz \
-        --transform 's,^[.],flagtensor-0.1.0,' \
+# Name the source tarball from the spec's Version so a version bump in the
+# spec is the single change a release refresh needs.
+RUN SPEC_VERSION=$(awk '/^Version:/{print $2; exit}' packaging/rpm/specs/flagtensor.spec) \
+    && tar czf /root/rpmbuild/SOURCES/flagtensor-${SPEC_VERSION}.tar.gz \
+        --transform "s,^[.],flagtensor-${SPEC_VERSION}," \
         --exclude='.git' --exclude='build' --exclude='debian-packages' \
         --exclude='rpm-packages' .
 
