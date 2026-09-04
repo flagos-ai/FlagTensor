@@ -6,7 +6,7 @@
 
 Name:           libflagtensor-nvidia
 Version:        0.2.0
-Release:        2%{?dist}
+Release:        1%{?dist}
 Summary:        FlagTensor C++ operator runtime (NVIDIA backend)
 
 License:        Apache-2.0
