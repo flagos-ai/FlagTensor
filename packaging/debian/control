@@ -1,0 +1,65 @@
+Source: flagtensor
+Section: libs
+Priority: optional
+Maintainer: FlagOS Contributors <contact@flagos.io>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.25),
+               dh-python,
+               libtriton-jit-nvidia-dev (>= 0.1.0-3),
+               ninja-build,
+               patchelf,
+               python3.12-dev,
+               python3-build,
+               python3-pip,
+               python3-setuptools,
+               python3-wheel
+Standards-Version: 4.6.2
+Homepage: https://github.com/flagos-ai/FlagTensor
+Vcs-Browser: https://github.com/flagos-ai/FlagTensor
+Vcs-Git: https://github.com/flagos-ai/FlagTensor.git
+Rules-Requires-Root: no
+X-Build-Environment: The NVIDIA native packages are built in a CUDA container.
+ PyTorch and Triton must match the installed libtriton-jit-nvidia package.
+
+Package: python3-flagtensor
+Section: python
+Architecture: all
+Depends: python3:any,
+         ${misc:Depends},
+         ${python3:Depends},
+         python3-openpyxl,
+         python3-yaml
+Suggests: python3-flagtensor-nvidia
+Description: FlagTensor Python operators for FlagOS
+ Python tensor operators and backend registration used by FlagOS workloads.
+ GPU-enabled PyTorch, Triton, and ABI-matched matplotlib are supplied by the
+ selected backend runtime.
+
+Package: libflagtensor-nvidia
+Architecture: amd64
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         libtriton-jit-nvidia (>= 0.1.0-3)
+Description: FlagTensor C++ operator runtime (NVIDIA backend)
+ Native FlagTensor operators backed by CUDA and the system Triton JIT runtime.
+ This package also contains the Triton kernel sources used at runtime.
+
+Package: libflagtensor-nvidia-dev
+Section: libdevel
+Architecture: amd64
+Depends: ${misc:Depends},
+         libflagtensor-nvidia (= ${binary:Version}),
+         libtriton-jit-nvidia-dev (>= 0.1.0-3)
+Description: FlagTensor C++ development files (NVIDIA backend)
+ Headers and CMake package files for applications using FlagTensor operators.
+
+Package: python3-flagtensor-nvidia
+Section: python
+Architecture: amd64
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         libflagtensor-nvidia (= ${binary:Version}),
+         python3.12,
+         python3-flagtensor (= ${binary:Version})
+Description: FlagTensor Python C++ extension (NVIDIA backend)
+ Python bindings for the native NVIDIA FlagTensor operator runtime.

@@ -7,5 +7,5 @@ set_target_properties(c_operators PROPERTIES
 
 if(FLAGTENSOR_INSTALL)
   install(TARGETS c_operators
-          LIBRARY DESTINATION ".")
+          LIBRARY DESTINATION "${FLAGTENSOR_PYTHON_INSTALL_DIR}")
 endif()

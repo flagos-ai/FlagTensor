@@ -1,0 +1,5 @@
+# These packages must match the external Python 3.12 backend runtime. Jammy's
+# matplotlib pulls in a CPython 3.10 NumPy build, so it cannot satisfy this ABI.
+torch
+triton
+matplotlib
