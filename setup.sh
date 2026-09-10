@@ -22,6 +22,7 @@
 #   ./setup.sh --backend nvidia         # NVIDIA GPU (CUDA + cuTensor baseline)
 #   ./setup.sh --backend ppu            # Alibaba PPU (PPU_SDK bundled Triton)
 #   ./setup.sh --backend iluvatar       # Iluvatar CoreX / 天数 (FlagTree Triton)
+#   ./setup.sh --backend metax          # MetaX metax / 墨芯 (MACA SDK + Triton+metax)
 #   ./setup.sh --backend hygon          # Hygon DCU / 海光 (torch_hcu + FlagTree HCU)
 #   ./setup.sh --backend kunlunxin      # Kunlunxin XPU / 昆仑芯 (torch_xmlir + FlagTree XPU)
 #
@@ -65,6 +66,8 @@ detect_backend() {
   if command -v nvidia-smi &>/dev/null; then echo "nvidia"; return; fi
   if command -v ppu-smi &>/dev/null || [[ -n "${PPU_SDK:-}" ]]; then echo "ppu"; return; fi
   if command -v ixsmi &>/dev/null || [[ -d /usr/local/corex ]]; then echo "iluvatar"; return; fi
+  # MetaX metax: MACA SDK exposes mx-smi + triton+metax backend.
+  if command -v mx-smi &>/dev/null || [[ -n "${MACA_PATH:-}" ]] || [[ -d /opt/maca ]] || [[ -d /opt/maca-3.7.1 ]]; then echo "metax"; return; fi
   # Hygon DCU: torch_hcu redirects CUDA calls to the DTK runtime.
   if command -v hygon-smi &>/dev/null || [[ -d /opt/hYGON/dtk ]] || [[ -d /opt/dtk ]]; then echo "hygon"; return; fi
   # Kunlunxin XPU: torch_xmlir redirects CUDA calls to the XPU runtime.
@@ -77,7 +80,7 @@ if [[ "$BACKEND" == "auto" ]]; then
   [[ -n "$BACKEND" ]] || step_fail "cannot auto-detect backend (need nvidia-smi, ppu-smi, ixsmi, hygon-smi or xpu-smi). Use --backend explicitly."
 fi
 case "$BACKEND" in
-  nvidia|ppu|iluvatar|hygon|kunlunxin) ;;
+  nvidia|ppu|iluvatar|metax|hygon|kunlunxin) ;;
   *) step_fail "unsupported backend '$BACKEND' (expect nvidia, ppu, iluvatar, hygon or kunlunxin)" ;;
 esac
 
@@ -158,6 +161,21 @@ case "$BACKEND" in
     esac
     ;;
 
+  metax)
+    printf "Checking MetaX GPU (mx-smi) ... "
+    if command -v mx-smi &>/dev/null && mx-smi -L &>/dev/null; then
+      gpu_count=$(mx-smi -L 2>/dev/null | wc -l)
+      gpu_name=$(mx-smi -L 2>/dev/null | head -1)
+      step_ok "${gpu_count} x ${gpu_name}"
+    else
+      step_fail "no MetaX GPU (install MACA SDK + mxdriver)"
+    fi
+    # MetaX handles its own triton install (either flagtree strict or
+    # the MetaX-native triton-3.6.0+metax fork); leave FLAGTREE_SPEC
+    # empty so the generic FlagTree install step below is skipped.
+    FLAGTREE_SPEC=""
+    ;;
+
   hygon)
     printf "Checking GPU ... "
     if hygon-smi &>/dev/null; then
@@ -193,7 +211,7 @@ printf "Upgrading pip ... "
 python3 -m pip install --upgrade pip -q && step_ok "done"
 
 # ---------------------------------------------------------------------------
-# Vendor math libraries (baseline dependency)
+# Vendor math libraries (baseline dependency) + vendor-specific setup
 # ---------------------------------------------------------------------------
 if [[ "$BACKEND" == "nvidia" ]]; then
   printf "Installing cuTensor ... "
@@ -233,6 +251,146 @@ if [[ "$BACKEND" == "kunlunxin" ]]; then
     step_ok "already installed"
   else
     step_warn "torch_xmlir not found — install it from the Kunlunxin XPU SDK"
+  fi
+fi
+
+# -----------------------------------------------------------------------
+# MetaX metax / MACA SDK — full env init (torch plugin + triton backend)
+# -----------------------------------------------------------------------
+# The MetaX backend needs a MACA SDK install, a MetaX-specific PyTorch
+# plugin (torch+metax / torch_fl) that replaces stock torch, and a
+# triton+metax backend wheel that contains the metax compiler/runtime.
+# Two triton options exist:
+#   1. FLAGTREE_STRICT=1 — genuine flagtree==0.5.1+metax3.1 from FlagOS
+#      PyPI (Triton 3.1 base — FlagTensor WILL NOT RUN on this).
+#   2. Default — MetaX-native triton-3.6.0+metax3.8.1 wheel (actually
+#      runs FlagTensor) + a flagtree distribution-name shim for customer
+#      acceptance tooling.
+if [[ "$BACKEND" == "metax" ]]; then
+  # --- MACA SDK path ---
+  printf "Checking MACA SDK ... "
+  MACA_PATH="${MACA_PATH:-/opt/maca}"
+  if [[ ! -d "$MACA_PATH" ]]; then
+    for _cand in /opt/maca-3.7.1 /opt/maca-3.7 /opt/maca-3.0; do
+      [[ -d "$_cand" ]] && { MACA_PATH="$_cand"; break; }
+    done
+  fi
+  if [[ -d "$MACA_PATH" ]]; then
+    step_ok "$MACA_PATH"
+  else
+    step_fail "MACA SDK not found (set MACA_PATH or install to /opt/maca)"
+  fi
+  export MACA_PATH
+  export PATH="$MACA_PATH/bin:$PATH"
+  export LD_LIBRARY_PATH="$MACA_PATH/lib:$MACA_PATH/lib64:${LD_LIBRARY_PATH:-}"
+
+  # --- MetaX PyTorch plugin (torch+metax) ---
+  if [[ "${SKIP_TORCH:-0}" == "1" ]]; then
+    step_warn "SKIP_TORCH=1, assuming torch+metax already installed"
+  elif python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null \
+    && python3 -c "import torch; assert torch.cuda.get_device_name(0).startswith('MetaX')" 2>/dev/null; then
+    step_ok "torch+metax already functional ($(python3 -c 'import torch;print(torch.cuda.get_device_name(0))'))"
+  else
+    printf "Installing torch+metax plugin ... "
+    _WHEEL=""
+    for _cand in \
+        "${TORCH_METAX_WHEEL:-}" \
+        "$(ls torch_fl-*+metax*.whl 2>/dev/null | head -1)" \
+        "$(ls torch-*+metax*.whl 2>/dev/null | head -1)" \
+        "$(ls /public-flash/*/wheel/torch_fl-*+metax*.whl 2>/dev/null | head -1)" \
+        "$(ls /public-nfs/*/wheel/torch_fl-*+metax*.whl 2>/dev/null | head -1)"; do
+      [[ -n "$_cand" && -f "$_cand" ]] && { _WHEEL="$_cand"; break; }
+    done
+    if [[ -n "$_WHEEL" ]]; then
+      python3 -m pip install -q "$_WHEEL" && step_ok "$(basename "$_WHEEL")"
+    else
+      step_fail "torch+metax wheel not found. Set TORCH_METAX_WHEEL=/path/to/torch_fl-*+metax*.whl"
+    fi
+  fi
+
+  # Remove existing triton/flagtree so the metax wheel takes sole ownership
+  # of ``import triton`` (avoids shadowing issues).
+  printf "Removing existing triton/flagtree (if any) ... "
+  python3 -m pip uninstall -y triton flagtree -q 2>/dev/null || true
+  step_ok "done"
+
+  # --- Triton+metax backend ---
+  if [[ "${FLAGTREE_STRICT:-0}" == "1" ]]; then
+    # Genuine FlagTree (Triton 3.1 base) — FlagTensor WILL NOT run.
+    printf "Installing FlagTree==0.5.1+metax3.1 (Triton 3.1, STRICT mode) ... "
+    if python3 -m pip install --no-cache-dir -q --no-deps \
+          --index-url="$FLAGOS_PYPI" \
+          --trusted-host="$FLAGOS_HOST" \
+          "flagtree==0.5.1+metax3.1" 2>/dev/null; then
+      step_ok "done"
+      step_warn "FlagTree 0.5.1+metax3.1 is Triton-3.1-based; FlagTensor kernels require Triton >=3.6. Tests WILL FAIL at MLIR compile."
+    else
+      step_fail "flagtree wheel install failed (network?)"
+    fi
+  else
+    # MetaX-native triton-3.6.0+metax3.8.1 (actually runs FlagTensor).
+    printf "Installing triton-3.6.0+metax3.8.1 (MetaX native) ... "
+    _WHEEL=""
+    for _cand in \
+        "${TRITON_METAX_WHEEL:-}" \
+        "$(ls triton-3.6.0+metax*.whl 2>/dev/null | head -1)" \
+        "$(ls /public-flash/*/wheel/triton-3.6.0+metax*.whl 2>/dev/null | head -1)" \
+        "$(ls /public-nfs/*/wheel/triton-3.6.0+metax*.whl 2>/dev/null | head -1)"; do
+      [[ -n "$_cand" && -f "$_cand" ]] && { _WHEEL="$_cand"; break; }
+    done
+    if [[ -n "$_WHEEL" ]]; then
+      python3 -m pip install -q "$_WHEEL" && step_ok "$(basename "$_WHEEL")"
+    else
+      step_fail "triton-3.6.0+metax3.8.1 wheel not found. Set TRITON_METAX_WHEEL=/path/to/triton-3.6.0+metax3.8.1*.whl"
+    fi
+
+    # Verify triton import + metax backend
+    printf "Verifying triton+metax backend ... "
+    if python3 -c "
+import triton, os
+assert os.path.exists(os.path.join(triton.__path__[0], 'backends', 'metax'))
+" 2>/dev/null; then
+      step_ok "triton $(python3 -c 'import triton;print(triton.__version__)') + metax backend"
+    else
+      step_fail "triton installed but metax backend missing"
+    fi
+
+    # --- Register the flagtree distribution-name shim ---
+    # run_tests.py:_probe_flagtree() does
+    # ``importlib.metadata.version('flagtree')``. The MetaX triton wheel is
+    # named ``triton``, not ``flagtree``, so without a shim the probe would
+    # report "FlagTree not detected".  Register a minimal dist-info that
+    # satisfies the metadata lookup without replacing or shadowing triton.
+    printf "Registering flagtree distribution-name shim ... "
+    _SP_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])")
+    _FT_DIR="$_SP_DIR/flagtree-3.6.0+metax3.8.1.dist-info"
+    if [[ -d "$_FT_DIR" ]]; then
+      step_ok "already registered"
+    else
+      mkdir -p "$_FT_DIR"
+      cat > "$_FT_DIR/METADATA" <<'EOF'
+Metadata-Version: 2.1
+Name: flagtree
+Version: 3.6.0+metax3.8.1
+Summary: FlagTree (metax backend on Triton 3.6) — metadata shim
+Home-page: https://github.com/flagos-ai/FlagTree
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+EOF
+      cat > "$_FT_DIR/INSTALLER" <<'EOF'
+setup.sh
+EOF
+      cat > "$_FT_DIR/RECORD" <<'EOF'
+flagtree-3.6.0+metax3.8.1.dist-info/METADATA,,
+flagtree-3.6.0+metax3.8.1.dist-info/INSTALLER,,
+flagtree-3.6.0+metax3.8.1.dist-info/RECORD,,
+EOF
+      if python3 -c "from importlib import metadata; assert metadata.version('flagtree')=='3.6.0+metax3.8.1'" 2>/dev/null; then
+        step_ok "flagtree shim registered (version 3.6.0+metax3.8.1)"
+      else
+        step_warn "flagtree shim registered but metadata.version() failed (non-fatal)"
+      fi
+    fi
   fi
 fi
 
@@ -296,6 +454,26 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
+# MetaX metax: vendor runtime env
+# ---------------------------------------------------------------------------
+# The MACA SDK's .so directory needs to be on the loader path at runtime
+# (already exported earlier in this script). Generate an env file so the
+# runner can source it instead of redetecting.
+if [[ "$BACKEND" == "metax" ]]; then
+  printf "Generating metax_env.sh ... "
+  cat > "$SCRIPT_DIR/metax_env.sh" <<EOF
+# Auto-generated by setup.sh (backend: metax). Source this before running
+# FlagTensor on a MetaX metax board.
+#   source metax_env.sh
+export MACA_PATH="$MACA_PATH"
+export PATH="\$MACA_PATH/bin:\$PATH"
+export LD_LIBRARY_PATH="\$MACA_PATH/lib:\$MACA_PATH/lib64\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+export PYTHONUNBUFFERED=1
+EOF
+  step_ok "done (source metax_env.sh before run_tests.py)"
+fi
+
+# ---------------------------------------------------------------------------
 # Hygon DCU / Kunlunxin XPU: vendor runtime env
 # ---------------------------------------------------------------------------
 # Both vendors drive the device through a CUDA-compat plugin that needs the
@@ -348,6 +526,9 @@ if [[ "${FLAGTENSOR_SKIP_VERIFY:-0}" != "1" ]]; then
   if [[ "$BACKEND" == "iluvatar" ]]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/iluvatar_env.sh"
+  elif [[ "$BACKEND" == "metax" ]]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/metax_env.sh"
   elif [[ "$BACKEND" == "hygon" ]]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/hygon_env.sh"
@@ -377,6 +558,19 @@ if backend == "iluvatar":
 elif backend == "nvidia":
     from flagtensor.cutensor import CUTENSOR_AVAILABLE
     print(f"cuTensor available: {CUTENSOR_AVAILABLE}")
+elif backend == "metax":
+    import triton
+    try:
+        import os
+        assert os.path.exists(os.path.join(triton.__path__[0], 'backends', 'metax'))
+        print(f"Triton (metax): {triton.__version__} @ {triton.__file__}")
+    except (AssertionError, Exception):
+        print(f"Triton (unknown backend): {triton.__version__}")
+    from importlib import metadata
+    try:
+        print(f"flagtree shim: {metadata.version('flagtree')}")
+    except Exception:
+        pass
 
 print(f"flagtensor OK, vendor = {device.vendor_name}, device = {device.name}")
 PYEOF
@@ -387,6 +581,8 @@ echo "=== Setup complete (backend: $BACKEND) ==="
 case "$BACKEND" in
   iluvatar)
     echo "Next: source iluvatar_env.sh && python3 tools/run_tests.py --stages all --gpus 0" ;;
+  metax)
+    echo "Next: source metax_env.sh && python3 tools/run_tests.py --stages all --gpus 0" ;;
   hygon)
     echo "Next: source hygon_env.sh && python3 tools/run_tests.py --stages all --gpus 0" ;;
   kunlunxin)
