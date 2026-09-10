@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from flagtensor import contraction
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig
+from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, vendor_baseline_available
 from flagtensor.config import DEFAULT_BENCHMARK_DTYPES, DEFAULT_GETT_BENCHMARK_SHAPES
 from flagtensor.cutensor import CUTENSOR_AVAILABLE
 from flagtensor.runtime import (
@@ -19,7 +19,7 @@ try:
     from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
 except ImportError:
     _TORCH_NPU_AVAILABLE = lambda: False
-BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
+BASELINE_AVAILABLE = vendor_baseline_available()
 from flagtensor.ops.CUTENSOR_OP_GETT import _is_default_2d_gett_case, _launch_gett_kernel
 from flagtensor.visualization import plot_latency_and_speedup, write_benchmark_csv
 

@@ -53,7 +53,12 @@ for legacy_path in LEGACY_FILES:
     if not legacy_path.exists():
         continue
     legacy_module = _load_legacy_module(legacy_path)
-    marker_name = legacy_path.stem.removeprefix("test_").removesuffix("_perf")
+    _stem = legacy_path.stem
+    if _stem.startswith("test_"):
+        _stem = _stem[len("test_"):]
+    if _stem.endswith("_perf"):
+        _stem = _stem[:-len("_perf")]
+    marker_name = _stem
     marker = getattr(pytest.mark, marker_name)
     for name, value in vars(legacy_module).items():
         if name.startswith("test_"):

@@ -17,6 +17,7 @@
 Provides --mode/--level/--warmup/--iter/--record/--dtypes CLI options and
 result-recording hooks aligned with FlagGems benchmark/conftest.py.
 """
+import argparse
 import json
 import logging
 import os
@@ -120,22 +121,29 @@ def emit_record_logger(message: str) -> None:
 # CLI options
 # ---------------------------------------------------------------------------
 def pytest_addoption(parser):
-    parser.addoption(
-        "--mode",
-        action="store",
-        default="kernel",
-        required=False,
-        choices=["kernel", "operator", "wrapper"],
-        help="Benchmark mode: kernel (device kernel), operator (end2end), wrapper (runtime)",
-    )
-    parser.addoption(
-        "--level",
-        action="store",
-        default="comprehensive",
-        required=False,
-        choices=[level.value for level in consts.BenchLevel],
-        help="Benchmark level: comprehensive or core",
-    )
+    # Vendor test runners may register the same options more than once; tolerate it.
+    try:
+        parser.addoption(
+            "--mode",
+            action="store",
+            default="kernel",
+            required=False,
+            choices=["kernel", "operator", "wrapper"],
+            help="Benchmark mode: kernel (device kernel), operator (end2end), wrapper (runtime)",
+        )
+    except (ValueError, argparse.ArgumentError):
+        pass
+    try:
+        parser.addoption(
+            "--level",
+            action="store",
+            default="comprehensive",
+            required=False,
+            choices=[level.value for level in consts.BenchLevel],
+            help="Benchmark level: comprehensive or core",
+        )
+    except (ValueError, argparse.ArgumentError):
+        pass
     parser.addoption(
         "--warmup",
         default=consts.DEFAULT_WARMUP_COUNT,
@@ -190,7 +198,7 @@ def pytest_addoption(parser):
             default=REPORT_FILE,
             help="Path to report file for JSON output",
         )
-    except ValueError:
+    except (ValueError, argparse.ArgumentError):
         pass
     parser.addoption(
         "--parallel",
@@ -205,7 +213,7 @@ def pytest_addoption(parser):
             action="store_true",
             help="Collect test marks without executing",
         )
-    except ValueError:
+    except (ValueError, argparse.ArgumentError):
         pass
 
 

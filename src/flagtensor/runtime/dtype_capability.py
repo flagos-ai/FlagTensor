@@ -44,7 +44,6 @@ _VENDOR_DTYPE_SUPPORT: dict[str, dict[str, set[torch.dtype]]] = {
             torch.float32,
             torch.bfloat16,
             torch.int8,
-            torch.float8_e5m2,       # tl.float8e5  ✅ load/store + abs
         },
         "hopper": {
             # H100/H200 (SM90) — not tested but logically should support more
@@ -52,13 +51,21 @@ _VENDOR_DTYPE_SUPPORT: dict[str, dict[str, set[torch.dtype]]] = {
             torch.float32,
             torch.bfloat16,
             torch.int8,
-            torch.float8_e5m2,
-            torch.float8_e4m3fn,     # tl.float8e4nv only available on Hopper
         },
     },
     # Future vendors:
     # "aipu": {"aipu": {torch.float16, torch.float32, torch.int8}},
 }
+
+# FP8 dtypes were added in torch 2.1; register them dynamically so older
+# torch builds (e.g. 2.0.1 used by the Kunlunxin XPU plugin) don't crash
+# at import time. On torch 2.1+ these add float8 support to Ampere/Hopper.
+# Ampere: tl.float8e5 (load/store + abs). Hopper: tl.float8e4nv as well.
+for _fp8_attr in ("float8_e5m2", "float8_e4m3fn"):
+    _fp8_dt = getattr(torch, _fp8_attr, None)
+    if _fp8_dt is not None:
+        _VENDOR_DTYPE_SUPPORT["nvidia"]["ampere"].add(_fp8_dt)
+        _VENDOR_DTYPE_SUPPORT["nvidia"]["hopper"].add(_fp8_dt)
 
 # ── Default fallback (any vendor not listed) ──────────────────────────────
 _DEFAULT_SUPPORTED = {torch.float16, torch.float32, torch.bfloat16}
@@ -72,16 +79,24 @@ _CUTENSOR_DTYPE_MAP: dict[torch.dtype, str] = {
     torch.complex64: "CUDA_C_32F",
     torch.complex128: "CUDA_C_64F",
     # cuTensor FP8 support available via CUTENSOR_COMPUTE_DESC_* constants
-    torch.float8_e5m2: "CUDA_R_8E5M2",     # defined in cuTensor 2.x
-    torch.float8_e4m3fn: "CUDA_R_8E4M3",   # defined in cuTensor 2.x
+    # (FP8 dtypes added in torch 2.1; guarded with getattr for older torch)
     torch.int8: "CUDA_R_8I",
 }
+for _fp8_attr, _cuda_r in (
+    ("float8_e5m2", "CUDA_R_8E5M2"),
+    ("float8_e4m3fn", "CUDA_R_8E4M3"),
+):
+    _fp8_dt = getattr(torch, _fp8_attr, None)
+    if _fp8_dt is not None:
+        _CUTENSOR_DTYPE_MAP[_fp8_dt] = _cuda_r
 
 _ACCUMULATOR_DTYPE_MAP: dict[torch.dtype, torch.dtype] = {
     torch.bfloat16: torch.float32,
     torch.float16: torch.float32,
-    torch.float8_e5m2: torch.float32,
 }
+_fp8_e5m2 = getattr(torch, "float8_e5m2", None)
+if _fp8_e5m2 is not None:
+    _ACCUMULATOR_DTYPE_MAP[_fp8_e5m2] = torch.float32
 
 
 class DtypeCapability:

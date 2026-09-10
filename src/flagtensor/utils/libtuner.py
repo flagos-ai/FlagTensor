@@ -298,6 +298,68 @@ class LibTuner(triton.runtime.Autotuner):
         self.benchmark_table_name = f"{self.__name__}_{self.cache_key}_benchmark"
         self.cache = libcache[self.config_table_name]
 
+    def _bench(self, *args, config, **meta):
+        """Override Autotuner._bench to use host-loop timing on non-NVIDIA backends.
+
+        ``triton.testing.do_bench`` uses ``torch.cuda.Event`` for GPU-side
+        timing. On non-NVIDIA backends (e.g. Kunlunxin XPU via torch_xmlir),
+        ``Event.elapsed_time()`` returns 0, causing ``ZeroDivisionError``
+        in the autotuner. This override falls back to host-loop wall-clock
+        timing (``time.perf_counter`` + ``synchronize``) which works on
+        all backends.
+        """
+        try:
+            _vendor = device.vendor_name
+        except Exception:
+            _vendor = "nvidia"
+
+        if _vendor == "nvidia":
+            return super()._bench(*args, config=config, **meta)
+
+        # Non-NVIDIA: use host-loop timing instead of CUDA events
+        conflicts = meta.keys() & config.kwargs.keys()
+        if conflicts:
+            raise ValueError(
+                f"Conflicting meta-parameters: {', '.join(conflicts)}."
+                " Make sure that you don't re-define auto-tuned symbols."
+            )
+        current = dict(meta, **config.all_kwargs())
+        full_nargs = {**self.nargs, **current}
+
+        def kernel_call():
+            if config.pre_hook:
+                config.pre_hook(full_nargs)
+            self.pre_hook(args)
+            try:
+                self.fn.run(*args, **current)
+            except Exception as e:
+                try:
+                    self.post_hook(args, exception=e)
+                finally:
+                    raise
+            self.post_hook(args, exception=None)
+
+        try:
+            import torch
+            # Warmup
+            for _ in range(self.num_warmups):
+                kernel_call()
+            torch_device_fn.synchronize()
+            # Timing
+            n_reps = max(self.num_reps, 1)
+            start = time.perf_counter()
+            for _ in range(n_reps):
+                kernel_call()
+            torch_device_fn.synchronize()
+            end = time.perf_counter()
+            latency_ms = (end - start) / n_reps * 1000
+            # Return (median, 20th, 80th percentile) — all the same since
+            # we only measure the mean. This matches the format expected
+            # by the parent class's policy selection logic.
+            return [latency_ms, latency_ms, latency_ms]
+        except Exception:
+            return [float("inf"), float("inf"), float("inf")]
+
     @cached_property
     def cache_key(self) -> str:
         jit_fn = self.fn

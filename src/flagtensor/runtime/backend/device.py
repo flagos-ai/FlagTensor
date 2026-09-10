@@ -17,6 +17,7 @@
 Following FlagGems runtime/backend/device.py pattern.
 """
 
+import importlib
 import os
 import shlex
 import subprocess
@@ -122,6 +123,32 @@ class DeviceDetector:
             if hasattr(torch_module, attr):
                 return str(vendor_name)
 
+        # Kunlunxin XPU (P800 / R200) is driven through a CUDA-compatible
+        # ``torch_xmlir`` plugin that hooks into ``torch.cuda``.  The plugin
+        # does not expose a vendor-specific torch attribute, so detect it by
+        # checking whether the ``torch_xmlir`` / ``xpytorch_import_hook``
+        # module is importable.  This must run before the torch.cuda fallback
+        # below, otherwise the generic device name ("GPU") would be missed.
+        try:
+            importlib.import_module("torch_xmlir")
+            return "kunlunxin"
+        except ImportError:
+            pass
+
+        # Hygon DCU is driven through a CUDA-compatible ``torch_hcu``
+        # plugin that hooks into ``torch.cuda`` (analogous to the
+        # Kunlunxin ``torch_xmlir`` plugin).  Detect it by checking whether
+        # the ``torch_hcu`` module is importable.  This must run before the
+        # torch.cuda fallback below, otherwise the DCU device (which reports
+        # a generic name through the compat layer) would be misclassified as
+        # NVIDIA.  The ``torch.__hcu_version__`` marker is already covered by
+        # the ``_VENDOR_TORCH_ATTR`` loop above.
+        try:
+            importlib.import_module("torch_hcu")
+            return "hygon"
+        except ImportError:
+            pass
+
         # Fallback: check torch.cuda for NVIDIA
         if hasattr(torch_module, "cuda") and hasattr(
             torch_module.cuda, "get_device_properties"
@@ -146,6 +173,20 @@ class DeviceDetector:
                 # metax backend.
                 if upper_name.startswith("METAX"):
                     return "metax"
+                # Kunlunxin XPU devices (P800 / R200) report a generic
+                # "GPU" name through the torch_xmlir compatibility layer.
+                # The torch_xmlir module check above is the primary signal;
+                # this name-based check is a secondary fallback for
+                # environments where the plugin loads lazily.
+                if "XPU" in upper_name or "KUNLUN" in upper_name:
+                    return "kunlunxin"
+                # Hygon DCU devices report names like "Hygon DCU..." or
+                # "DCU-..." through the torch_hcu compatibility layer.
+                # The torch_hcu module check above is the primary signal;
+                # this name-based check is a secondary fallback for
+                # environments where the plugin loads lazily.
+                if "HYGON" in upper_name or upper_name.startswith("DCU"):
+                    return "hygon"
                 if "NVIDIA" in upper_name:
                     return "nvidia"
             except Exception:

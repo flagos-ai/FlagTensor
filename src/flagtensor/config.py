@@ -19,7 +19,16 @@ from flagtensor.runtime.dtype_capability import dtype_capability
 # Default dtypes for benchmarking — float types only, no FP8.
 # FP8 is excluded because A100 (Ampere) does not support FP8 kernel operations
 # (torch.randn for float8_e5m2 raises RuntimeError).
-_FP8_DTYPES = {torch.float8_e4m3fn, torch.float8_e5m2, torch.float8_e4m3fnuz, torch.float8_e5m2fnuz}
+# FP8 dtypes were added in torch 2.1; guard with getattr so older torch
+# builds (e.g. 2.0.1 used by the Kunlunxin XPU plugin) don't crash.
+_FP8_DTYPES = {
+    dt for dt in (
+        getattr(torch, "float8_e4m3fn", None),
+        getattr(torch, "float8_e5m2", None),
+        getattr(torch, "float8_e4m3fnuz", None),
+        getattr(torch, "float8_e5m2fnuz", None),
+    ) if dt is not None
+}
 DEFAULT_BENCHMARK_DTYPES = [
     d for d in dtype_capability.supported_dtypes
     if d.is_floating_point and d not in _FP8_DTYPES

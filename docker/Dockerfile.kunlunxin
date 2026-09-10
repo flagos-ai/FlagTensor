@@ -1,0 +1,53 @@
+# FlagTensor Kunlunxin XPU test image
+# Ubuntu 22.04 base (GLIBC 2.35) for flagtree compatibility, with the
+# Kunlunxin torch_xmlir plugin copied from the vendor image.
+FROM ccr.ccs.tencentyun.com/taco/taco-train:kunlun_torch2.0.1-ubuntu20-04-py3.8-v1.0 AS xpu-plugin
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl bzip2 libgomp1 pciutils \
+        libxml2 libnuma1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Miniconda for Python 3.8 (matches the torch_xmlir plugin build)
+RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh \
+    && bash /tmp/miniconda.sh -b -p /opt/miniconda \
+    && rm /tmp/miniconda.sh
+ENV PATH=/opt/miniconda/bin:$PATH
+
+RUN conda create -y -n flagtensor python=3.8 && conda clean -afy
+SHELL ["conda", "run", "-n", "flagtensor", "/bin/bash", "-c"]
+
+# Copy the XPU plugin + hook from the vendor image
+COPY --from=xpu-plugin /root/miniconda/envs/python38_torch201_cuda/lib/python3.8/site-packages/torch_xmlir /opt/xpu-plugin/torch_xmlir
+COPY --from=xpu-plugin /root/miniconda/envs/python38_torch201_cuda/lib/python3.8/site-packages/torch_xmlir.pth /opt/xpu-plugin/torch_xmlir.pth
+COPY --from=xpu-plugin /root/miniconda/envs/python38_torch201_cuda/lib/python3.8/site-packages/xpytorch_import_hook.py /opt/xpu-plugin/xpytorch_import_hook.py
+
+# Install torch (same version as the plugin was built against)
+RUN pip install --no-cache-dir torch==2.0.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+
+# Install the XPU plugin into the conda env
+RUN cp /opt/xpu-plugin/torch_xmlir.pth /opt/miniconda/envs/flagtensor/lib/python3.8/site-packages/ \
+    && cp -r /opt/xpu-plugin/torch_xmlir /opt/miniconda/envs/flagtensor/lib/python3.8/site-packages/ \
+    && cp /opt/xpu-plugin/xpytorch_import_hook.py /opt/miniconda/envs/flagtensor/lib/python3.8/site-packages/
+
+# Install flagtree (Kunlunxin XPU triton fork)
+RUN pip install --no-cache-dir --index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple \
+        --trusted-host=resource.flagos.net \
+        "flagtree==0.3.0rc2+xpu3.0" --no-deps
+
+# Install FlagTensor Python dependencies
+RUN pip install --no-cache-dir PyYAML matplotlib pytest
+
+# XPU runtime env vars (from the vendor image)
+ENV LD_LIBRARY_PATH=/usr/local/xpu/so:/opt/xccl/so
+ENV XPU_FORCE_USERMODE_LAUNCH=1
+ENV CUDART_DUMMY_REGISTER=1
+ENV XMLIR_CUDNN_ENABLED=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /workspace
