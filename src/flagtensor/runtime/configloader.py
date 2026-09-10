@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import copy
+import inspect
 import logging
 import warnings
 
@@ -22,6 +23,29 @@ from . import backend
 from .backend.device import DeviceDetector
 
 logger = logging.getLogger(__name__)
+
+
+# Triton 2.x does not support the ``num_ctas`` argument to ``triton.Config``
+# (introduced in Triton 3.x).  Detect once at import time so we can build
+# configs that work on both versions.  This is transparent on Triton 3.x
+# (``num_ctas`` is forwarded as before) and simply omits it on 2.x.
+_CONFIG_KWARGS = set()
+try:
+    _CONFIG_KWARGS = set(
+        p.name for p in inspect.signature(triton.Config).parameters.values()
+    )
+except (ValueError, TypeError):
+    pass
+_CONFIG_SUPPORTS_NUM_CTAS = "num_ctas" in _CONFIG_KWARGS
+
+
+def _make_triton_config(meta, num_warps, num_stages, num_ctas=1):
+    """Build a ``triton.Config`` that works on both Triton 2.x and 3.x."""
+    if _CONFIG_SUPPORTS_NUM_CTAS:
+        return triton.Config(
+            meta, num_warps=num_warps, num_stages=num_stages, num_ctas=num_ctas
+        )
+    return triton.Config(meta, num_warps=num_warps, num_stages=num_stages)
 
 
 class ConfigLoader(object):
@@ -113,7 +137,7 @@ class ConfigLoader(object):
 
             if current_step == final_step:
                 all_configs.append(
-                    triton.Config(
+                    _make_triton_config(
                         cur_config["META"],
                         num_warps=cur_config["num_warps"],
                         num_stages=cur_config["num_stages"],
@@ -197,7 +221,7 @@ class ConfigLoader(object):
                     current_config[default_param] = single_config[default_param]
 
             configs.append(
-                triton.Config(
+                _make_triton_config(
                     single_config["META"],
                     num_warps=current_config["num_warps"],
                     num_stages=current_config["num_stages"],

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
 
 from typing import Callable, Optional, Tuple
 
@@ -18,48 +19,74 @@ import torch
 import triton
 import triton.language as tl
 
-try:
-    # Triton <= 3.3 (e.g. flagtree 0.4.0+3.3 / iluvatar3.1): the direct
-    # extern libdevice lives under the cuda namespace. CoreX 3.1 also ships
-    # a top‑level triton/language/extra/libdevice.py, but that one is a
-    # dispatch variant that produces wrong results on this backend — so the
-    # cuda path must be tried first.
-    from triton.language.extra.cuda import libdevice
-except ImportError:
-    try:
-        # CoreX Triton >= 3.6 (e.g. flagtree 0.6.1+iluvatar3.6): the cuda
-        # namespace is gone; the real extern libdevice moved to
-        # triton.language.extra.corex (the top‑level extra/libdevice.py
-        # there is a signature stub with no implementations).
-        from triton.language.extra.corex import libdevice
-    except ImportError:
-        try:
-            # Upstream Triton >= 3.4: real libdevice at the top level.
-            from triton.language.extra import libdevice
-        except ImportError:
-            # Non‑NVIDIA backends (e.g. triton‑ascend) ship their own libdevice under
-            # a vendor‑specific subpackage. Fall back to the active vendor's module.
-            try:
-                from triton.language.extra.ascend import libdevice  # type: ignore
-            except ImportError:  # pragma: no cover — keeps test collection working
-                libdevice = None  # type: ignore
-
-
 from flagtensor import runtime
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 from flagtensor.utils.libtuner import libtuner
 
 
 # ---------------------------------------------------------------------------
-# Vendor flag — triton-ascend's libdevice has precision bugs in asin/acos
-# and a JIT bug in atan2. On NVIDIA we keep the original libdevice calls
-# (faster, more precise, autotuner has two distinct variants to compare).
-# On Ascend we fall back to atan-based mathematically-equivalent forms.
+# Vendor flag — detect the active vendor once at import time.
+#   * triton-ascend's libdevice has precision bugs in asin/acos and a JIT
+#     bug in atan2. On Ascend we fall back to atan-based forms.
+#   * On Kunlunxin XPU, ``triton.language.extra.cuda.libdevice`` is
+#     importable but its ``__nv_*`` symbols are rejected by the XPU
+#     elfconv, so every ``libdevice.*`` call fails to compile. We must
+#     use ``triton.language.extra.xpu.libdevice`` instead. Additionally,
+#     ``tl.exp`` / ``tl.log`` on XPU use low-precision polynomial
+#     approximations; we redirect them to the hardware-backed
+#     ``tl.exp2`` / ``tl.log2`` paths.
+#   * On NVIDIA we keep the original libdevice calls (faster, more
+#     precise, autotuner has two distinct variants to compare).
 # ---------------------------------------------------------------------------
 try:
-    _IS_ASCEND = runtime.device.vendor_name == "ascend"
+    _VENDOR_NAME = runtime.device.vendor_name
 except Exception:
-    _IS_ASCEND = False
+    _VENDOR_NAME = None
+_IS_ASCEND = _VENDOR_NAME == "ascend"
+_IS_KUNLUNXIN = _VENDOR_NAME == "kunlunxin"
+
+
+# ---------------------------------------------------------------------------
+# libdevice selection — vendor-appropriate to avoid symbol mismatch.
+# The XPU triton package ships ``triton.language.extra.cuda`` (inherited
+# from the upstream tree), so the naive ``try: from ...cuda import
+# libdevice`` succeeds on Kunlunxin but binds ``__nv_*`` symbols that the
+# XPU elfconv cannot resolve, causing every ``libdevice.*`` kernel to
+# fail at compile time. Select the XPU libdevice explicitly on Kunlunxin;
+# every other vendor keeps the original import order
+# (cuda → corex → top-level extra → ascend).
+# ---------------------------------------------------------------------------
+if _IS_KUNLUNXIN:
+    try:
+        from triton.language.extra.xpu import libdevice  # type: ignore
+    except ImportError:  # pragma: no cover — keeps test collection working
+        libdevice = None  # type: ignore
+else:
+    try:
+        # Triton <= 3.3 (e.g. flagtree 0.4.0+3.3 / iluvatar3.1): the direct
+        # extern libdevice lives under the cuda namespace. CoreX 3.1 also ships
+        # a top‑level triton/language/extra/libdevice.py, but that one is a
+        # dispatch variant that produces wrong results on this backend — so the
+        # cuda path must be tried first.
+        from triton.language.extra.cuda import libdevice
+    except ImportError:
+        try:
+            # CoreX Triton >= 3.6 (e.g. flagtree 0.6.1+iluvatar3.6): the cuda
+            # namespace is gone; the real extern libdevice moved to
+            # triton.language.extra.corex (the top‑level extra/libdevice.py
+            # there is a signature stub with no implementations).
+            from triton.language.extra.corex import libdevice
+        except ImportError:
+            try:
+                # Upstream Triton >= 3.4: real libdevice at the top level.
+                from triton.language.extra import libdevice
+            except ImportError:
+                # Non‑NVIDIA backends (e.g. triton‑ascend) ship their own libdevice under
+                # a vendor‑specific subpackage. Fall back to the active vendor's module.
+                try:
+                    from triton.language.extra.ascend import libdevice  # type: ignore
+                except ImportError:  # pragma: no cover — keeps test collection working
+                    libdevice = None  # type: ignore
 
 
 _UNARY_FAMILY_RULES = {
@@ -133,10 +160,11 @@ def _build_abs_where_variant(scalar_fn):
 
 @_register_unary_rewrite("acos_libdevice")
 def _build_acos_libdevice_variant(scalar_fn):
-    if _IS_ASCEND:
-        # triton-ascend's libdevice.acos has a precision bug (~3e-4 error).
-        # Fall back to ``pi/2 - atan(x / sqrt(1-x*x))`` which uses only the
-        # well-behaved libdevice.atan path.
+    if _IS_ASCEND or _IS_KUNLUNXIN:
+        # triton-ascend's libdevice.acos has a precision bug (~3e-4 error),
+        # and XPU's libdevice.acos has a ~3e-3 precision error. Fall back to
+        # ``pi/2 - atan(x / sqrt(1-x*x))`` which uses only the well-behaved
+        # libdevice.atan path.
         @triton.jit
         def _variant(x):
             pi_over_2: tl.constexpr = 1.5707963267948966
@@ -152,7 +180,7 @@ def _build_acos_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("acos_asin_shift")
 def _build_acos_asin_shift_variant(scalar_fn):
-    if _IS_ASCEND:
+    if _IS_ASCEND or _IS_KUNLUNXIN:
         # Same atan-based fallback as acos_libdevice above.
         @triton.jit
         def _variant(x):
@@ -180,6 +208,14 @@ def _build_acosh_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("acosh_log_sqrt")
 def _build_acosh_log_sqrt_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            return libdevice.log2(xf + tl.sqrt(xf * xf - 1)) * ln2
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -190,10 +226,11 @@ def _build_acosh_log_sqrt_variant(scalar_fn):
 
 @_register_unary_rewrite("asin_libdevice")
 def _build_asin_libdevice_variant(scalar_fn):
-    if _IS_ASCEND:
-        # triton-ascend's libdevice.asin has a precision bug (~3e-4 error).
-        # Fall back to ``atan(x / sqrt(1-x*x))`` which uses only the
-        # well-behaved libdevice.atan path.
+    if _IS_ASCEND or _IS_KUNLUNXIN:
+        # triton-ascend's libdevice.asin has a precision bug (~3e-4 error),
+        # and XPU's libdevice.asin has a similar precision issue. Fall back
+        # to ``atan(x / sqrt(1-x*x))`` which uses only the well-behaved
+        # libdevice.atan path.
         @triton.jit
         def _variant(x):
             xf = x.to(tl.float32)
@@ -208,9 +245,10 @@ def _build_asin_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("asin_atan2")
 def _build_asin_atan2_variant(scalar_fn):
-    if _IS_ASCEND:
-        # triton-ascend's libdevice.atan2 is unusable inside JIT functions.
-        # Reuse the atan-based form from asin_libdevice.
+    if _IS_ASCEND or _IS_KUNLUNXIN:
+        # triton-ascend's libdevice.atan2 is unusable inside JIT functions,
+        # and XPU's libdevice.asin has precision issues. Reuse the
+        # atan-based form from asin_libdevice.
         @triton.jit
         def _variant(x):
             xf = x.to(tl.float32)
@@ -235,6 +273,16 @@ def _build_asinh_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("asinh_log_sqrt")
 def _build_asinh_log_sqrt_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            abs_x = tl.abs(xf)
+            inner = abs_x + tl.sqrt(abs_x * abs_x + 1)
+            return tl.where(xf >= 0, libdevice.log2(inner) * ln2, -libdevice.log2(inner) * ln2)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -282,6 +330,14 @@ def _build_atanh_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("atanh_log_ratio")
 def _build_atanh_log_ratio_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            return 0.5 * libdevice.log2((1 + xf) / (1 - xf)) * ln2
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -331,6 +387,14 @@ def _build_cos_phase_shift_variant(scalar_fn):
 
 @_register_unary_rewrite("cosh_exp_pair")
 def _build_cosh_exp_pair_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            return 0.5 * (libdevice.exp2(xf * log2e) + libdevice.exp2(-xf * log2e))
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -341,6 +405,15 @@ def _build_cosh_exp_pair_variant(scalar_fn):
 
 @_register_unary_rewrite("cosh_exp_recip")
 def _build_cosh_exp_recip_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            exp_pos = libdevice.exp2(xf * log2e)
+            return 0.5 * (exp_pos + 1.0 / exp_pos)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -361,6 +434,18 @@ def _build_exp_intrinsic_variant(scalar_fn):
 
 @_register_unary_rewrite("exp2_scaled")
 def _build_exp2_scaled_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # XPU's ``tl.exp2`` (core IR op lowered by the XPU backend) produces
+        # large precision errors, but ``libdevice.exp2`` dispatches to the
+        # hardware-backed ``_ZN3xpu5exp2fEf`` symbol with full precision.
+        # Use libdevice.exp2 so the autotuner cannot pick a broken variant.
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            return libdevice.exp2(xf * log2e)
+        return _variant
+
     @triton.jit
     def _variant(x):
         log2e: tl.constexpr = 1.4426950408889634
@@ -410,6 +495,18 @@ def _build_identity_f32_variant(scalar_fn):
 
 @_register_unary_rewrite("log_intrinsic")
 def _build_log_intrinsic_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # XPU's ``tl.log`` (core IR op) produces large precision errors.
+        # Use ``libdevice.log2`` (hardware-backed ``_ZN3xpu5log2fEf``)
+        # via ``log(x) = log2(x) * ln2`` so the autotuner cannot pick a
+        # broken variant.
+        @triton.jit
+        def _variant(x):
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            return libdevice.log2(xf) * ln2
+        return _variant
+
     @triton.jit
     def _variant(x):
         return tl.log(x.to(tl.float32))
@@ -419,6 +516,17 @@ def _build_log_intrinsic_variant(scalar_fn):
 
 @_register_unary_rewrite("log2_scaled")
 def _build_log2_scaled_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # XPU's ``tl.log2`` (core IR op) produces large precision errors,
+        # but ``libdevice.log2`` dispatches to the hardware-backed
+        # ``_ZN3xpu5log2fEf`` symbol with full precision.
+        @triton.jit
+        def _variant(x):
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            return libdevice.log2(xf) * ln2
+        return _variant
+
     @triton.jit
     def _variant(x):
         ln2: tl.constexpr = 0.6931471805599453
@@ -457,6 +565,17 @@ def _build_rcp_direct_variant(scalar_fn):
 
 @_register_unary_rewrite("rcp_exp_log")
 def _build_rcp_exp_log_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            ax = tl.abs(xf)
+            recip_abs = libdevice.exp2(-libdevice.log2(ax) * ln2 * log2e)
+            return tl.where(xf >= 0, recip_abs, -recip_abs)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -506,6 +625,14 @@ def _build_sin_phase_shift_variant(scalar_fn):
 
 @_register_unary_rewrite("sinh_exp_pair")
 def _build_sinh_exp_pair_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            return 0.5 * (libdevice.exp2(xf * log2e) - libdevice.exp2(-xf * log2e))
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -516,6 +643,15 @@ def _build_sinh_exp_pair_variant(scalar_fn):
 
 @_register_unary_rewrite("sinh_exp_recip")
 def _build_sinh_exp_recip_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            exp_pos = libdevice.exp2(xf * log2e)
+            return 0.5 * (exp_pos - 1.0 / exp_pos)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -596,6 +732,14 @@ def _build_tan_recip_divide_variant(scalar_fn):
 
 @_register_unary_rewrite("sigmoid_exp2")
 def _build_sigmoid_exp2_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            return 1 / (1 + libdevice.exp2(-xf * log2e))
+        return _variant
+
     @triton.jit
     def _variant(x):
         log2e: tl.constexpr = 1.4426950408889634
@@ -607,6 +751,15 @@ def _build_sigmoid_exp2_variant(scalar_fn):
 
 @_register_unary_rewrite("sigmoid_exp")
 def _build_sigmoid_exp_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            exp_neg = libdevice.exp2(-xf * log2e)
+            return 1 / (1 + exp_neg)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -618,6 +771,14 @@ def _build_sigmoid_exp_variant(scalar_fn):
 
 @_register_unary_rewrite("tanh_exp2")
 def _build_tanh_exp2_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            return 2 / (1 + libdevice.exp2(-2 * xf * log2e)) - 1
+        return _variant
+
     @triton.jit
     def _variant(x):
         log2e: tl.constexpr = 1.4426950408889634
@@ -629,6 +790,15 @@ def _build_tanh_exp2_variant(scalar_fn):
 
 @_register_unary_rewrite("tanh_exp")
 def _build_tanh_exp_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            exp_neg_twice = libdevice.exp2(-2 * xf * log2e)
+            return (1 - exp_neg_twice) / (1 + exp_neg_twice)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -640,6 +810,15 @@ def _build_tanh_exp_variant(scalar_fn):
 
 @_register_unary_rewrite("softplus_where")
 def _build_softplus_where_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            return libdevice.log2(1 + libdevice.exp2(-tl.abs(xf) * log2e)) * ln2 + tl.where(xf > 0, xf, 0)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -650,6 +829,15 @@ def _build_softplus_where_variant(scalar_fn):
 
 @_register_unary_rewrite("softplus_max")
 def _build_softplus_max_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            return libdevice.log2(1 + libdevice.exp2(-tl.abs(xf) * log2e)) * ln2 + tl.maximum(xf, 0)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -660,6 +848,15 @@ def _build_softplus_max_variant(scalar_fn):
 
 @_register_unary_rewrite("swish_exp2")
 def _build_swish_exp2_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            sigmoid = 1 / (1 + libdevice.exp2(-xf * log2e))
+            return xf * sigmoid
+        return _variant
+
     @triton.jit
     def _variant(x):
         log2e: tl.constexpr = 1.4426950408889634
@@ -672,6 +869,15 @@ def _build_swish_exp2_variant(scalar_fn):
 
 @_register_unary_rewrite("swish_exp")
 def _build_swish_exp_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            xf = x.to(tl.float32)
+            exp_neg = libdevice.exp2(-xf * log2e)
+            return xf / (1 + exp_neg)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -683,6 +889,17 @@ def _build_swish_exp_variant(scalar_fn):
 
 @_register_unary_rewrite("mish_exp2")
 def _build_mish_exp2_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            softplus = libdevice.log2(1 + libdevice.exp2(-tl.abs(xf) * log2e)) * ln2 + tl.where(xf > 0, xf, 0)
+            tanh_softplus = 2 / (1 + libdevice.exp2(-2 * softplus * log2e)) - 1
+            return xf * tanh_softplus
+        return _variant
+
     @triton.jit
     def _variant(x):
         log2e: tl.constexpr = 1.4426950408889634
@@ -696,6 +913,18 @@ def _build_mish_exp2_variant(scalar_fn):
 
 @_register_unary_rewrite("mish_exp")
 def _build_mish_exp_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        @triton.jit
+        def _variant(x):
+            log2e: tl.constexpr = 1.4426950408889634
+            ln2: tl.constexpr = 0.6931471805599453
+            xf = x.to(tl.float32)
+            softplus = libdevice.log2(1 + libdevice.exp2(-tl.abs(xf) * log2e)) * ln2 + tl.maximum(xf, 0)
+            exp_neg_twice = libdevice.exp2(-2 * softplus * log2e)
+            tanh_softplus = (1 - exp_neg_twice) / (1 + exp_neg_twice)
+            return xf * tanh_softplus
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -841,7 +1070,12 @@ def _default_prepare(x: torch.Tensor) -> Tuple[Optional[torch.Tensor], torch.Ten
 _DEFAULT_UNARY_DTYPES = {torch.float16, torch.float32, torch.bfloat16}
 
 # Additional dtype groups for operators that support them.
-_TRIVIAL_UNARY_EXTRA = {torch.int8, torch.float8_e5m2}  # identity, abs
+# torch.float8_e5m2 / float8_e4m3fn were added in torch 2.1; guard with
+# getattr so older torch (e.g. 2.0.1 used by the Kunlunxin XPU plugin)
+# doesn't crash at import time.
+_TRIVIAL_UNARY_EXTRA = {torch.int8}
+if hasattr(torch, "float8_e5m2"):
+    _TRIVIAL_UNARY_EXTRA.add(torch.float8_e5m2)
 _NEG_UNARY_EXTRA = {torch.int8}  # neg works for int8 (fp8_e5m2 fails on triton 3.3)
 
 class _UnaryPointwiseExecutor:

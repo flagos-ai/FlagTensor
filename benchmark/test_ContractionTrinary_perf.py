@@ -33,7 +33,7 @@ try:
     from flagtensor.torch_npu_baseline import torch_npu_available as _TORCH_NPU_AVAILABLE
 except ImportError:
     _TORCH_NPU_AVAILABLE = lambda: False
-BASELINE_AVAILABLE = CUTENSOR_AVAILABLE or _BaselineClass is not None or _TORCH_NPU_AVAILABLE()
+BASELINE_AVAILABLE = vendor_baseline_available()
 # Operator-mode baseline: the full A@B@C chain. NVIDIA -> cuTensor chain
 # executor; Ascend -> torch_npu chain; other vendors -> vendor-native chain
 # baseline (e.g. Iluvatar CoreX PyTorch-native).

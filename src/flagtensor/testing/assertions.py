@@ -30,11 +30,9 @@ DEFAULT_CORRECTNESS_TOLERANCES: Dict[torch.dtype, Tuple[float, float]] = {
     torch.int16: (0, 0),
     torch.int32: (0, 0),
     torch.int64: (0, 0),
-    # FP8 types — very low precision
-    torch.float8_e4m3fn: (1e-3, 1e-3),
-    torch.float8_e5m2: (1e-3, 1e-3),
-    torch.float8_e4m3fnuz: (1e-3, 1e-3),
-    torch.float8_e5m2fnuz: (1e-3, 1e-3),
+    # FP8 types — very low precision (added in torch 2.1; registered
+    # dynamically below so older torch builds, e.g. 2.0.1 used by the
+    # Kunlunxin XPU plugin, don't crash at import time)
     # Floating-point types — per operator-library spec
     torch.float16: (1e-3, 1e-3),
     torch.float32: (1.3e-6, 1.3e-6),
@@ -45,6 +43,20 @@ DEFAULT_CORRECTNESS_TOLERANCES: Dict[torch.dtype, Tuple[float, float]] = {
     torch.complex64: (1.3e-6, 1.3e-6),
     torch.complex128: (1e-7, 1e-7),
 }
+
+# FP8 dtypes were added in torch 2.1; register them dynamically so older
+# torch builds (e.g. 2.0.1 used by the Kunlunxin XPU plugin) don't crash at
+# import time. On torch 2.1+ the entries are identical to the inline ones
+# that used to live in the dict above.
+for _fp8_name, _tol in (
+    ("float8_e4m3fn", (1e-3, 1e-3)),
+    ("float8_e5m2", (1e-3, 1e-3)),
+    ("float8_e4m3fnuz", (1e-3, 1e-3)),
+    ("float8_e5m2fnuz", (1e-3, 1e-3)),
+):
+    _fp8_dt = getattr(torch, _fp8_name, None)
+    if _fp8_dt is not None:
+        DEFAULT_CORRECTNESS_TOLERANCES[_fp8_dt] = _tol
 
 
 def get_tolerance(

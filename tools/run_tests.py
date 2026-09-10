@@ -379,6 +379,17 @@ def get_env(gpu_id):
 # Command execution with timeout
 # ===================================================================
 def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
+    # On slow-compiling backends (e.g. Kunlunxin XPU where triton kernel
+    # JIT + autotune takes much longer than NVIDIA), the default 600s
+    # timeout causes spurious TIMEOUT failures. Detect the vendor and
+    # raise the timeout accordingly. This is transparent on NVIDIA (which
+    # rarely exceeds 60s per test).
+    try:
+        _vendor = ENV_INFO.get("torch", {}).get("vendor", "")
+        if _vendor in ("kunlunxin", "hygon"):
+            timeout = max(timeout, 1200)
+    except Exception:
+        pass
     stdout = subprocess.DEVNULL
     stderr = subprocess.DEVNULL
     if CFG.dump_output:
@@ -633,8 +644,19 @@ def _find_benchmark_test(op: str) -> Path:
     """Find the benchmark test file for an operator."""
     for op_meta in get_ops_from_inventory():
         if op_meta.get("name") == op:
+            # Prefer the explicit benchmark_test field from operators.yaml
+            bf_path = op_meta.get("benchmark_test")
+            if bf_path:
+                bf = ROOT / bf_path
+                if bf.exists():
+                    return bf
+            # Fall back to category-based file name
             cat = op_meta.get("category", "unary")
             bf = ROOT / "benchmark" / f"test_{cat}_perf.py"
+            if bf.exists():
+                return bf
+            # Try Capitalized category (e.g. Contraction vs contraction)
+            bf = ROOT / "benchmark" / f"test_{cat.capitalize()}_perf.py"
             if bf.exists():
                 return bf
     return ROOT / "benchmark"
@@ -1023,12 +1045,12 @@ def main():
     # -------------------------------------------------------------------
     # Vendor-gated operator selection
     #
-    # NVIDIA and PPU run the full operator suite (all 36 operators across
-    # all stages).  Non-production backends (Huawei Ascend, Iluvatar,
-    # T-Head, ...) are currently in a pilot / phased-delivery stage and
-    # only exercise a reduced set of representative operators.  This keeps
-    # acceptance reports focused and avoids noisy failures from operators
-    # that are still being stabilised on those platforms.
+    # NVIDIA, PPU, Kunlunxin and Hygon run the full operator suite (all 36
+    # operators across all stages).  Non-production backends (Huawei Ascend,
+    # Iluvatar, T-Head, ...) are currently in a pilot / phased-delivery stage
+    # and only exercise a reduced set of representative operators.  This
+    # keeps acceptance reports focused and avoids noisy failures from
+    # operators that are still being stabilised on those platforms.
     # -------------------------------------------------------------------
     _PILOT_VENDOR_OPS = {
         "CUTENSOR_OP_MUL",
@@ -1045,7 +1067,7 @@ def main():
         pass
     else:
         _vendor = ENV_INFO.get("torch", {}).get("vendor", "unknown")
-        if _vendor not in ("nvidia", "ppu", "unknown"):
+        if _vendor not in ("nvidia", "ppu", "kunlunxin", "hygon", "unknown"):
             ops = [o for o in ops if o in _PILOT_VENDOR_OPS]
             if not ops:
                 pwarn("No pilot operators matched the selected stages. Nothing to run.")

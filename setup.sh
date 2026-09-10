@@ -22,10 +22,14 @@
 #   ./setup.sh --backend nvidia         # NVIDIA GPU (CUDA + cuTensor baseline)
 #   ./setup.sh --backend ppu            # Alibaba PPU (PPU_SDK bundled Triton)
 #   ./setup.sh --backend iluvatar       # Iluvatar CoreX / 天数 (FlagTree Triton)
+#   ./setup.sh --backend hygon          # Hygon DCU / 海光 (torch_hcu + FlagTree HCU)
+#   ./setup.sh --backend kunlunxin      # Kunlunxin XPU / 昆仑芯 (torch_xmlir + FlagTree XPU)
 #
 # Environment overrides (rarely needed):
 #   FLAGTREE_PKG='flagtree==<spec>'     # override the FlagTree package spec
 #   FLAGTENSOR_SKIP_VERIFY=1            # skip the post-install verify step
+#   DTK_HOME=/opt/hYGON/dtk             # Hygon DTK SDK root
+#   XPU_SDK_SO_DIR=/opt/xre/so          # Kunlunxin XPU runtime .so directory
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,19 +60,25 @@ done
 BACKEND="$(echo "$BACKEND" | tr '[:upper:]' '[:lower:]')"
 
 detect_backend() {
+  # Explicit override always wins (also honoured by the runtime detector).
+  if [[ -n "${GEMS_VENDOR:-}" ]]; then echo "$GEMS_VENDOR"; return; fi
   if command -v nvidia-smi &>/dev/null; then echo "nvidia"; return; fi
   if command -v ppu-smi &>/dev/null || [[ -n "${PPU_SDK:-}" ]]; then echo "ppu"; return; fi
   if command -v ixsmi &>/dev/null || [[ -d /usr/local/corex ]]; then echo "iluvatar"; return; fi
+  # Hygon DCU: torch_hcu redirects CUDA calls to the DTK runtime.
+  if command -v hygon-smi &>/dev/null || [[ -d /opt/hYGON/dtk ]] || [[ -d /opt/dtk ]]; then echo "hygon"; return; fi
+  # Kunlunxin XPU: torch_xmlir redirects CUDA calls to the XPU runtime.
+  if command -v xpu-smi &>/dev/null || [[ -d /opt/xre/so ]]; then echo "kunlunxin"; return; fi
   echo ""
 }
 
 if [[ "$BACKEND" == "auto" ]]; then
   BACKEND="$(detect_backend)"
-  [[ -n "$BACKEND" ]] || step_fail "cannot auto-detect backend (need nvidia-smi, ppu-smi or ixsmi). Use --backend explicitly."
+  [[ -n "$BACKEND" ]] || step_fail "cannot auto-detect backend (need nvidia-smi, ppu-smi, ixsmi, hygon-smi or xpu-smi). Use --backend explicitly."
 fi
 case "$BACKEND" in
-  nvidia|ppu|iluvatar) ;;
-  *) step_fail "unsupported backend '$BACKEND' (expect nvidia, ppu or iluvatar)" ;;
+  nvidia|ppu|iluvatar|hygon|kunlunxin) ;;
+  *) step_fail "unsupported backend '$BACKEND' (expect nvidia, ppu, iluvatar, hygon or kunlunxin)" ;;
 esac
 
 echo "=== FlagTensor CI Setup (backend: $BACKEND) ==="
@@ -79,10 +89,20 @@ echo "=== FlagTensor CI Setup (backend: $BACKEND) ==="
 printf "Checking Python ... "
 python_version=$(python3 --version 2>/dev/null | awk '{print $NF}')
 python_mm=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-if [[ "$python_version" =~ ^3\.(10|11|12) ]]; then
+# The Kunlunxin XPU SDK (torch_xmlir) currently ships for Python 3.8 only,
+# and the Hygon DTK is validated on 3.8-3.12; every other backend requires
+# the 3.10-3.12 range the FlagTree wheels are published for.
+if [[ "$BACKEND" == "kunlunxin" || "$BACKEND" == "hygon" ]]; then
+  python_re='^3\.(8|9|10|11|12)$'
+  python_req="3.8-3.12"
+else
+  python_re='^3\.(10|11|12)$'
+  python_req="3.10-3.12"
+fi
+if [[ "$python_mm" =~ $python_re ]]; then
   step_ok "$python_version"
 else
-  printf "  %s $RED[UNSUPPORTED]$NC (need 3.10-3.12)\n" "$python_version"
+  printf "  %s $RED[UNSUPPORTED]$NC (need $python_req)\n" "$python_version"
   exit 1
 fi
 
@@ -137,6 +157,33 @@ case "$BACKEND" in
       *) step_fail "no FlagTree Iluvatar wheel for Python $python_mm (available: cp310: 0.4.0+iluvatar3.1, cp312: 0.6.1+iluvatar3.6)" ;;
     esac
     ;;
+
+  hygon)
+    printf "Checking GPU ... "
+    if hygon-smi &>/dev/null; then
+      step_ok "$(hygon-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "DCU device")"
+    else
+      # torch_hcu may still work without hygon-smi (e.g. inside a container
+      # where only the DTK userspace libraries are mounted).
+      step_warn "hygon-smi not found, assuming Hygon DTK (torch_hcu will be used)"
+    fi
+    # The Hygon FlagTree HCU build is tagged flagtree==<ver>+hcu<dtk_ver>;
+    # the exact tag tracks the DTK release, so select it with HCU_FLAGTREE
+    # (or FLAGTREE_PKG) rather than guessing here.
+    FLAGTREE_SPEC="${HCU_FLAGTREE:-flagtree}"
+    ;;
+
+  kunlunxin)
+    printf "Checking GPU ... "
+    if xpu-smi &>/dev/null; then
+      step_ok "XPU detected"
+    elif [[ -d /opt/xre/so ]]; then
+      step_warn "xpu-smi not found, assuming XPU SDK at /opt/xre"
+    else
+      step_fail "no Kunlunxin device (need xpu-smi or /opt/xre/so)"
+    fi
+    FLAGTREE_SPEC="${XPU_FLAGTREE:-flagtree==0.3.0rc1+xpu3.0}"
+    ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -159,8 +206,35 @@ if [[ "$BACKEND" == "nvidia" ]]; then
     step_ok "exists"
   fi
 fi
-# PPU / Iluvatar baselines are PyTorch-native ops dispatched to the vendor
-# libraries shipped with their SDKs — nothing extra to install.
+# PPU / Iluvatar / Hygon / Kunlunxin baselines are PyTorch-native ops
+# dispatched to the vendor libraries shipped with their SDKs — the only
+# extra piece is the vendor's torch plugin, which routes ``torch.cuda``
+# calls onto the accelerator runtime.
+if [[ "$BACKEND" == "hygon" ]]; then
+  printf "Checking torch_hcu plugin ... "
+  if python3 -c "import torch_hcu" &>/dev/null 2>&1; then
+    step_ok "already installed"
+  else
+    printf "Installing torch_hcu ... "
+    # torch_hcu ships alongside the Hygon DTK SDK rather than on PyPI.
+    if [[ -d /opt/hYGON/dtk/python ]]; then
+      python3 -m pip install -q /opt/hYGON/dtk/python/torch_hcu-* && step_ok "done"
+    elif [[ -d /opt/dtk/python ]]; then
+      python3 -m pip install -q /opt/dtk/python/torch_hcu-* && step_ok "done"
+    else
+      step_warn "torch_hcu not found in /opt/hYGON/dtk or /opt/dtk — install it from the DTK SDK"
+    fi
+  fi
+fi
+
+if [[ "$BACKEND" == "kunlunxin" ]]; then
+  printf "Checking torch_xmlir plugin ... "
+  if python3 -c "import torch_xmlir" &>/dev/null 2>&1; then
+    step_ok "already installed"
+  else
+    step_warn "torch_xmlir not found — install it from the Kunlunxin XPU SDK"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # FlagTree (FlagOS Triton distribution)
@@ -222,6 +296,51 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
+# Hygon DCU / Kunlunxin XPU: vendor runtime env
+# ---------------------------------------------------------------------------
+# Both vendors drive the device through a CUDA-compat plugin that needs the
+# SDK's .so directory on the loader path plus a couple of runtime switches.
+# Generate a small env file (same pattern as iluvatar_env.sh) so the runner
+# can source it instead of re-exporting everything by hand.
+if [[ "$BACKEND" == "hygon" ]]; then
+  printf "Generating hygon_env.sh ... "
+  DTK_HOME="${DTK_HOME:-/opt/hYGON/dtk}"
+  [[ -d "$DTK_HOME" ]] || DTK_HOME="/opt/dtk"
+  cat > "$SCRIPT_DIR/hygon_env.sh" <<EOF
+# Auto-generated by setup.sh (backend: hygon). Source this before running
+# FlagTensor on a Hygon DCU.
+#   source hygon_env.sh
+export DTK_HOME="$DTK_HOME"
+export LD_LIBRARY_PATH="\$DTK_HOME/lib:\$DTK_HOME/lib64\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+export LIBRARY_PATH="\$DTK_HOME/lib:\$DTK_HOME/lib64\${LIBRARY_PATH:+:\$LIBRARY_PATH}"
+# Required by the torch_hcu CUDA-compat layer.
+export HCU_FORCE_USERMODE_LAUNCH="\${HCU_FORCE_USERMODE_LAUNCH:-1}"
+export CUDART_DUMMY_REGISTER="\${CUDART_DUMMY_REGISTER:-1}"
+export PYTHONUNBUFFERED=1
+EOF
+  step_ok "done (source hygon_env.sh before run_tests.py)"
+fi
+
+if [[ "$BACKEND" == "kunlunxin" ]]; then
+  printf "Generating kunlunxin_env.sh ... "
+  cat > "$SCRIPT_DIR/kunlunxin_env.sh" <<'EOF'
+# Auto-generated by setup.sh (backend: kunlunxin). Source this before
+# running FlagTensor on a Kunlunxin XPU.
+#   source kunlunxin_env.sh
+export XPU_SDK_SO_DIR="${XPU_SDK_SO_DIR:-/opt/xre/so}"
+export XCCL_SO_DIR="${XCCL_SO_DIR:-/opt/xccl/so}"
+export LD_LIBRARY_PATH="$XPU_SDK_SO_DIR:$XCCL_SO_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LIBRARY_PATH="$XPU_SDK_SO_DIR:$XCCL_SO_DIR${LIBRARY_PATH:+:$LIBRARY_PATH}"
+# Required by the torch_xmlir CUDA-compat layer.
+export XPU_FORCE_USERMODE_LAUNCH="${XPU_FORCE_USERMODE_LAUNCH:-1}"
+export CUDART_DUMMY_REGISTER="${CUDART_DUMMY_REGISTER:-1}"
+export CUDART_MODULE_LOADING="${CUDART_MODULE_LOADING:-LAZY}"
+export PYTHONUNBUFFERED=1
+EOF
+  step_ok "done (source kunlunxin_env.sh before run_tests.py)"
+fi
+
+# ---------------------------------------------------------------------------
 # Verify
 # ---------------------------------------------------------------------------
 if [[ "${FLAGTENSOR_SKIP_VERIFY:-0}" != "1" ]]; then
@@ -229,6 +348,12 @@ if [[ "${FLAGTENSOR_SKIP_VERIFY:-0}" != "1" ]]; then
   if [[ "$BACKEND" == "iluvatar" ]]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/iluvatar_env.sh"
+  elif [[ "$BACKEND" == "hygon" ]]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/hygon_env.sh"
+  elif [[ "$BACKEND" == "kunlunxin" ]]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/kunlunxin_env.sh"
   fi
   python3 - "$BACKEND" <<'PYEOF'
 import sys
@@ -259,8 +384,13 @@ PYEOF
 fi
 
 echo "=== Setup complete (backend: $BACKEND) ==="
-if [[ "$BACKEND" == "iluvatar" ]]; then
-  echo "Next: source iluvatar_env.sh && python3 tools/run_tests.py --stages all --gpus 0"
-else
-  echo "Next: python3 tools/run_tests.py --stages all --gpus 0"
-fi
+case "$BACKEND" in
+  iluvatar)
+    echo "Next: source iluvatar_env.sh && python3 tools/run_tests.py --stages all --gpus 0" ;;
+  hygon)
+    echo "Next: source hygon_env.sh && python3 tools/run_tests.py --stages all --gpus 0" ;;
+  kunlunxin)
+    echo "Next: source kunlunxin_env.sh && ./tools/run_tests_kunlunxin.sh --stages all --gpus 0" ;;
+  *)
+    echo "Next: python3 tools/run_tests.py --stages all --gpus 0" ;;
+esac

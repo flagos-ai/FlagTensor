@@ -5,12 +5,17 @@ __pycache__/
 .pytest_cache/
 .hypothesis/
 results/
+results_hygon*/
+results_kunlunxin*/
 iluvatar_env.sh
+hygon_env.sh
+kunlunxin_env.sh
 benchmark/chart*/
 benchmark/results_backup*/
 benchmark/results/
 ci_results/
 ci_results_*/
+logs_results*/
 test_results/
 weekly_results_*/
 weekly_results_ci/
