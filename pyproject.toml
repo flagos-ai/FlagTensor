@@ -23,19 +23,24 @@ description = "Triton operators benchmarked against cuTensor baselines"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "torch>=2.2.0,<2.7.0",
+    "torch>=2.2.0,<2.11.0",
     "triton>=3.3.0,<3.8.0",
-    "pytest>=7.1.0",
-    "matplotlib>=3.7.0",
-    "openpyxl>=3.1.0",
-    "PyYAML>=6.0",
+    "matplotlib>=3.4",
+    "openpyxl>=3.0",
+    "PyYAML>=5.4",
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=7.1.0"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml"]
 
 [tool.black]
 line-length = 120

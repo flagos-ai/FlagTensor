@@ -1,0 +1,3 @@
+usr/include/flagtensor/
+usr/lib/*/libflagtensor.so
+usr/lib/*/cmake/FlagTensor/
