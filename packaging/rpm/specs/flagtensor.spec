@@ -5,7 +5,7 @@
 %global __requires_exclude ^([(]python3([.][0-9]+)?dist[(](torch|triton)[)] .*[)]|python3([.][0-9]+)?dist[(](matplotlib|openpyxl|pyyaml)[)] .*|(libcuda[.]so[.]1|libtorch(_cpu|_cuda|_python)?[.]so|libc10(_cuda)?[.]so)[(][)][(]64bit[)])$
 
 Name:           libflagtensor-nvidia
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        FlagTensor C++ operator runtime (NVIDIA backend)
 
@@ -118,6 +118,9 @@ test -f %{buildroot}%{_libdir}/cmake/FlagTensor/FlagTensorConfig.cmake
 %{python3_sitelib}/flagtensor/c_operators*.so
 
 %changelog
+* Fri Sep 18 2026 FlagOS Contributors <contact@flagos.io> - 0.3.0-1
+- Align the packaging baseline with the 0.3.0 release line.
+
 * Fri Sep 04 2026 FlagOS Contributors <contact@flagos.io> - 0.2.0-1
 - Correct the package version to the v0.2.0 source it actually ships:
   the packaging was written against the v0.2.0 tag while the metadata
