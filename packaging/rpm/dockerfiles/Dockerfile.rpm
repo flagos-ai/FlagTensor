@@ -1,0 +1,47 @@
+ARG BASE_IMAGE=nvidia/cuda:12.6.0-devel-rockylinux9
+FROM ${BASE_IMAGE}
+
+RUN dnf install -y epel-release dnf-plugins-core \
+    && (dnf config-manager --set-enabled crb 2>/dev/null \
+        || dnf config-manager --set-enabled powertools 2>/dev/null \
+        || true) \
+    && dnf install -y --allowerasing \
+        cmake fmt-devel gcc-c++ git json-devel ninja-build patchelf \
+        python3-devel python3-pip python3-setuptools python3-wheel \
+        rpm-build rpmdevtools \
+    && dnf clean all
+
+RUN python3 -m pip install --no-cache-dir \
+    "build" "pybind11==3.1.0" "torch==2.8.0" "triton==3.4.0"
+RUN python3 -m pip install --no-cache-dir "setuptools>=64" "wheel"
+
+COPY packaging/rpm/local-deps/ /tmp/local-deps/
+RUN if ls /tmp/local-deps/libtriton-jit-nvidia*.rpm >/dev/null 2>&1; then \
+        dnf install -y /tmp/local-deps/libtriton-jit-nvidia-[0-9]*.rpm \
+          /tmp/local-deps/libtriton-jit-nvidia-devel-*.rpm; \
+    else \
+        dnf config-manager --add-repo \
+          https://resource.flagos.net/repository/flagos-yum-hosted/; \
+        dnf install -y libtriton-jit-nvidia-devel; \
+    fi \
+    && dnf clean all
+
+RUN rpmdev-setuptree
+
+COPY . /workspace/FlagTensor
+WORKDIR /workspace/FlagTensor
+
+# Name the source tarball from the spec's Version so a version bump in the
+# spec is the single change a release refresh needs.
+RUN SPEC_VERSION=$(awk '/^Version:/{print $2; exit}' packaging/rpm/specs/flagtensor.spec) \
+    && tar czf /root/rpmbuild/SOURCES/flagtensor-${SPEC_VERSION}.tar.gz \
+        --transform "s,^[.],flagtensor-${SPEC_VERSION}," \
+        --exclude='.git' --exclude='build' --exclude='debian-packages' \
+        --exclude='rpm-packages' .
+
+RUN rpmbuild -ba packaging/rpm/specs/flagtensor.spec
+
+RUN mkdir -p /output \
+    && find /root/rpmbuild/RPMS -name "*.rpm" -exec cp {} /output/ \; \
+    && find /root/rpmbuild/SRPMS -name "*.rpm" -exec cp {} /output/ \; \
+    && ls -lh /output/
