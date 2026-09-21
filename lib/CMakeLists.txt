@@ -20,6 +20,12 @@ target_compile_definitions(operators PRIVATE BACKEND_${FLAGTENSOR_BACKEND})
 
 add_library(FlagTensor::operators ALIAS operators)
 
+set_target_properties(operators PROPERTIES
+  EXPORT_NAME operators
+  OUTPUT_NAME flagtensor
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR})
+
 # Install the triton_src directory alongside the shared library
 if(FLAGTENSOR_INSTALL)
   include(GNUInstallDirs)
@@ -27,5 +33,9 @@ if(FLAGTENSOR_INSTALL)
     DIRECTORY triton_src/
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/flagtensor/triton_src)
   install(TARGETS operators
-    DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    EXPORT FlagTensorTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
