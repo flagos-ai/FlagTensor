@@ -118,7 +118,7 @@ test -f %{buildroot}%{_libdir}/cmake/FlagTensor/FlagTensorConfig.cmake
 %{python3_sitelib}/flagtensor/c_operators*.so
 
 %changelog
-* Thu Sep 17 2026 FlagOS Contributors <contact@flagos.io> - 0.3.0-1
+* Fri Sep 18 2026 FlagOS Contributors <contact@flagos.io> - 0.3.0-1
 - Align the packaging baseline with the 0.3.0 release line.
 
 * Fri Sep 04 2026 FlagOS Contributors <contact@flagos.io> - 0.2.0-1

@@ -2,7 +2,7 @@ flagtensor (0.3.0-1) unstable; urgency=medium
 
   * Align the packaging baseline with the 0.3.0 release line.
 
- -- FlagOS Contributors <contact@flagos.io>  Thu, 17 Sep 2026 17:27:48 +0900
+ -- FlagOS Contributors <contact@flagos.io>  Fri, 18 Sep 2026 20:32:44 +0900
 
 flagtensor (0.2.0-1) unstable; urgency=medium
 
