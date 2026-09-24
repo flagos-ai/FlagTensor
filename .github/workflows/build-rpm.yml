@@ -6,14 +6,11 @@ on:
       - 'v*'
   pull_request:
     branches: [main]
+    # Only what changes the package. A package built on a source PR is
+    # published nowhere and downloaded by no one; release tags above still
+    # build, and a build can be requested by hand.
     paths:
-      - 'CMakeLists.txt'
-      - 'cmake/**'
-      - 'include/**'
-      - 'lib/**'
       - 'packaging/rpm/**'
-      - 'src/**'
-      - 'pyproject.toml'
       - '.github/workflows/build-rpm.yml'
   workflow_dispatch:
 
