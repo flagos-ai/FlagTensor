@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+__version__ = "0.3.0"
+
 from flagtensor import runtime
 from flagtensor.cutensor import BlockSparseTensor
 from flagtensor.cutensor import BlockSparseTensorContraction
