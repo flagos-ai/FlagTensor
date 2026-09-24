@@ -4,6 +4,11 @@ FROM ${BASE_IMAGE}
 ARG PYTHON_VERSION=3.12
 ARG TORCH_INDEX=https://resource.flagos.net/repository/flagos-pypi-nvidia/simple
 ARG TORCH_PACKAGES="torch==2.10.0+cu128 triton==3.6.0"
+
+# Ubuntu 24.04 marks its system Python as externally managed (PEP 668), which
+# stops get-pip.py and every pip install below. This is a throwaway build
+# container, so installing into the system Python is what is wanted.
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
