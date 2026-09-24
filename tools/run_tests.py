@@ -328,7 +328,7 @@ def _probe_flagtree():
 def _probe_flagtensor():
     try:
         import flagtensor
-        ENV_INFO["flagtensor"] = {"version": getattr(flagtensor, "__version__", "0.1.0")}
+        ENV_INFO["flagtensor"] = {"version": getattr(flagtensor, "__version__", "0.3.0")}
         pinfo(f"flagtensor loaded OK")
     except Exception as e:
         perror(f"flagtensor failed to load: {e}")
