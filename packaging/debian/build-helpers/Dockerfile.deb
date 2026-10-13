@@ -42,7 +42,8 @@ COPY packaging/debian/local-deps/ /tmp/local-deps/
 RUN if ls /tmp/local-deps/libtriton-jit-nvidia*.deb >/dev/null 2>&1; then \
         apt-get update && apt-get install -y /tmp/local-deps/*.deb; \
     else \
-        echo "deb [trusted=yes] https://resource.flagos.net/repository/flagos-apt-hosted/ flagos-apt-hosted main" \
+        . /etc/os-release; \
+        echo "deb [trusted=yes] https://resource.flagos.net/repository/flagos-apt-ubuntu${VERSION_ID}/ ${VERSION_CODENAME} main" \
           > /etc/apt/sources.list.d/flagos.list; \
         apt-get update; \
         apt-get install -y libtriton-jit-nvidia-dev; \
