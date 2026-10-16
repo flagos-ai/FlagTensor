@@ -16,6 +16,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flagtensor import runtime
 from flagtensor.utils import make_unary_pointwise_from_family
 
 
@@ -26,8 +27,16 @@ def _asinh_scalar(x):
     return tl.where(x >= 0, tl.log(inner), -tl.log(inner))
 
 
+_MTHREADS_REWRITE_RULES = (
+    ("asinh_log_sqrt", "asinh_log_sqrt")
+    if runtime.device.vendor_name == "mthreads"
+    else None
+)
+
+
 _asinh_kernel, asinh = make_unary_pointwise_from_family(
     "asinh",
     "asinh_like",
     _asinh_scalar,
+    rewrite_rules=_MTHREADS_REWRITE_RULES,
 )

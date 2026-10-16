@@ -17,7 +17,9 @@
 cuTensor is NVIDIA-only. On Ascend we use ``torch_npu`` aten operators as
 the vendor-optimized baseline. These operators are backed by CANN's aclnn
 library, which is the Huawei-shipped equivalent of cuTensor: a curated
-collection of highly tuned compute kernels for the Ascend AI Core.
+collection of highly tuned compute kernels for the Ascend AI Core. On
+MThreads, the same torch-backed baseline is reused for the MUSA device so
+the existing benchmark harness can run without a separate vendor fork.
 
 This module exposes baseline classes that mirror the cuTensor class
 hierarchy (``CuTensorAbs``, ``CuTensorBinary``...) so that
@@ -52,11 +54,20 @@ except ImportError:
 
 
 def torch_npu_available() -> bool:
-    """Return True when torch_npu is importable AND an NPU device is present."""
-    if not _TORCH_NPU_AVAILABLE:
-        return False
+    """Return True when the vendor baseline can run on the active accelerator."""
     try:
-        return bool(torch.npu.is_available())
+        if _TORCH_NPU_AVAILABLE and torch.npu.is_available():
+            return True
+    except Exception:
+        pass
+    try:
+        from flagtensor.runtime import device as _ft_device
+        from flagtensor.runtime import is_accelerator_available as _is_accelerator_available
+
+        return (
+            _is_accelerator_available()
+            and _ft_device.vendor_name in {"ascend", "mthreads"}
+        )
     except Exception:
         return False
 
