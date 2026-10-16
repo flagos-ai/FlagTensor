@@ -123,15 +123,23 @@ benchmark 失败)。
 已验证: `_nvidia` / `_ppu` vendor 模块均可正常加载; NVIDIA 无 cuTensor 时
 `BASELINE_AVAILABLE=False`、baseline class 为 `None` (与历史行为一致)。
 
+> **2026-10 更新**: 表中最后一行「`tools/run_tests.py` 未改动」已不再成立 —— 该文件在
+> 2026-10 重做了厂商分层 (非 NVIDIA 一律跑 16 算子套件, 需 `--full-suite` 才跑全量),
+> 详见 §5.1 与 `docs/hygon_adaptation.md` §3.4。其余各行仍准确。
+
 ## 5. 测试结果
 
-### 5.1 一键测试命令 (与 NVIDIA/PPU 完全相同)
+### 5.1 一键测试命令 (与 NVIDIA/PPU 完全相同，但需显式 --full-suite)
 
 ```bash
 # 全部 36 个算子
-python tools/run_tests.py --stages all --gpus 0,1,2,3 --output-dir results
+# --full-suite 不可省：天数是非 NVIDIA 后端，默认只跑 16 算子套件
+python tools/run_tests.py --stages all --full-suite --gpus 0,1,2,3 --output-dir results
 
-# 仅 stable 算子 (默认)
+# 仅 stable 算子（NVIDIA 上 34 个；天数不加 --full-suite 则为 16 个）
+python tools/run_tests.py --full-suite --gpus 0
+
+# 天数默认形态：16 算子套件
 python tools/run_tests.py --gpus 0
 ```
 

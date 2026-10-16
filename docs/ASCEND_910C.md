@@ -9,7 +9,12 @@ FlagTensor 原本只支持 NVIDIA CUDA（cuTensor 作为 baseline）。本文档
 - **NVIDIA GPU**（CUDA + cuTensor + Triton）
 - **华为 Ascend 910C NPU**（CANN + torch_npu-aten + triton-ascend）
 
-目标形态：用户在配置好环境后，运行 `python3 tools/run_tests.py --stages all --gpus 0,1,2,3,4,5,6,7`，即可在 Ascend 910C 上得到完整的 36 个算子精度 + 性能结果，输出到 `results/` 目录。
+目标形态：用户在配置好环境后，运行 `python3 tools/run_tests.py --stages all --full-suite --gpus 0,1,2,3,4,5,6,7`，即可在 Ascend 910C 上得到完整的 36 个算子精度 + 性能结果，输出到 `results/` 目录。
+
+> 2026-10 起 `run_tests.py` 对非 NVIDIA 厂商加了**固定 16 算子套件**的限制，且该限制
+> 优先于 `--stages`：昇腾上不加 `--full-suite` 的话，无论 `--stages` 传 `stable` 还是
+> `all`，都只跑这 16 个。因此本文档所有「跑全部算子」的命令都需要显式带 `--full-suite`。
+> 规则原文见 `docs/hygon_adaptation.md` §3.4。
 
 ## 2. 环境要求
 
@@ -167,7 +172,7 @@ docker run -it --rm \
 
 # 容器内
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
-python3 tools/run_tests.py --stages all --gpus 0,1,2,3,4,5,6,7 --output-dir results
+python3 tools/run_tests.py --stages all --full-suite --gpus 0,1,2,3,4,5,6,7 --output-dir results
 ```
 
 ### 5.2 跑测试
@@ -180,10 +185,14 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 python3 tools/run_tests.py --ops CUTENSOR_OP_ABS --gpus 0 --output-dir results
 
 # 8 NPU 并行跑全部 36 个算子（约 15-20 分钟）
-python3 tools/run_tests.py --stages all --gpus 0,1,2,3,4,5,6,7 --output-dir results
+# --full-suite 不可省：昇腾是非 NVIDIA 后端，默认只跑 16 算子套件
+python3 tools/run_tests.py --stages all --full-suite --gpus 0,1,2,3,4,5,6,7 --output-dir results
 
-# 只跑 stable 算子（34 个，默认）
-python3 tools/run_tests.py --stages stable --gpus 0,1,2,3,4,5,6,7 --output-dir results
+# 只跑 stable 算子（NVIDIA 上 34 个；昇腾上不加 --full-suite 则为 16 个）
+python3 tools/run_tests.py --stages stable --full-suite --gpus 0,1,2,3,4,5,6,7 --output-dir results
+
+# 昇腾默认形态：16 算子套件（约 8 NPU 各 2 个）
+python3 tools/run_tests.py --gpus 0,1,2,3,4,5,6,7 --output-dir results
 ```
 
 ### 5.3 查看结果
