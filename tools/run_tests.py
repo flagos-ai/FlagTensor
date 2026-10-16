@@ -1020,6 +1020,11 @@ def main():
         help="Dump stdout/stderr of each test to log files",
     )
     parser.add_argument(
+        "--full-suite", action="store_true", default=False,
+        help="Skip the non-NVIDIA operator restriction and run whatever "
+             "--stages selects on any vendor",
+    )
+    parser.add_argument(
         "--color", choices=["auto", "always", "never"], default="auto",
         help="Control ANSI color output: auto (TTY only), always, or never",
     )
@@ -1045,33 +1050,64 @@ def main():
     # -------------------------------------------------------------------
     # Vendor-gated operator selection
     #
-    # NVIDIA, PPU, Kunlunxin and Hygon run the full operator suite (all 36
-    # operators across all stages).  Non-production backends (Huawei Ascend,
-    # Iluvatar, T-Head, ...) are currently in a pilot / phased-delivery stage
-    # and only exercise a reduced set of representative operators.  This
-    # keeps acceptance reports focused and avoids noisy failures from
-    # operators that are still being stabilised on those platforms.
+    # NVIDIA runs the full suite picked by --stages (34 of the 36 registry
+    # entries at the default --stages stable).  Every other vendor — PPU,
+    # Hygon, Ascend, Iluvatar, MThreads, MetaX, Enflame, T-Head, Kunlunxin,
+    # plus the "unknown" fallback used when detection fails — runs the fixed
+    # 16-operator suite below.  Those backends are in a pilot /
+    # phased-delivery stage: pinning one suite keeps acceptance reports
+    # comparable across vendors and avoids noisy failures from operators
+    # still being stabilised there.  Detection failure ("unknown") is
+    # treated as a non-NVIDIA vendor on purpose: unknown must not silently
+    # buy a 34-operator run.
+    #
+    # Override with --ops / --op-list-file (an explicit list always wins) or
+    # with --full-suite (skip this gate on any vendor).
     # -------------------------------------------------------------------
-    _PILOT_VENDOR_OPS = {
+    _NON_NVIDIA_OPS = {
+        # binary
         "CUTENSOR_OP_MUL",
         "CUTENSOR_OP_MIN",
         "CUTENSOR_OP_MAX",
+        # hyperbolic / inverse hyperbolic
         "CUTENSOR_OP_SINH",
         "CUTENSOR_OP_ASINH",
+        "CUTENSOR_OP_COSH",
+        "CUTENSOR_OP_ACOSH",
+        # trigonometric / inverse trigonometric
+        "CUTENSOR_OP_ASIN",
+        "CUTENSOR_OP_ACOS",
+        # activations
         "CUTENSOR_OP_SOFT_SIGN",
         "CUTENSOR_OP_SWISH",
+        "CUTENSOR_OP_SIGMOID",
+        # exponential / root
+        "CUTENSOR_OP_EXP",
         "CUTENSOR_OP_SQRT",
+        # rounding
+        "CUTENSOR_OP_FLOOR",
+        "CUTENSOR_OP_CEIL",
     }
     if OPTS.ops or OPTS.op_list_file:
         # Explicit operator list from CLI takes precedence — no filtering.
         pass
+    elif OPTS.full_suite:
+        pinfo("--full-suite: skipping the non-NVIDIA operator restriction.")
     else:
         _vendor = ENV_INFO.get("torch", {}).get("vendor", "unknown")
-        if _vendor not in ("nvidia", "ppu", "kunlunxin", "hygon", "unknown"):
-            ops = [o for o in ops if o in _PILOT_VENDOR_OPS]
+        if _vendor != "nvidia":
+            ops = [o for o in ops if o in _NON_NVIDIA_OPS]
             if not ops:
-                pwarn("No pilot operators matched the selected stages. Nothing to run.")
+                pwarn(
+                    f"Vendor '{_vendor}': no operator of the {len(_NON_NVIDIA_OPS)}-op "
+                    "non-NVIDIA suite matched the selected stages. Nothing to run. "
+                    "(Override with --ops, --op-list-file or --full-suite.)"
+                )
                 sys.exit(0)
+            pinfo(
+                f"Vendor '{_vendor}' is not NVIDIA: restricted to the "
+                f"{len(_NON_NVIDIA_OPS)}-op suite ({len(ops)} match the selected stages)."
+            )
 
     op_count = len(ops)
     if op_count == 0:
