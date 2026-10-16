@@ -49,7 +49,7 @@ CoreX SDK 的 `/usr/local/corex/enable` 会把 SDK 自带的 Triton 目录放进
 
 ```bash
 source iluvatar_env.sh
-python3 tools/run_tests.py --stages all --gpus 0,1,2,3 --output-dir results
+python3 tools/run_tests.py --stages all --full-suite --gpus 0,1,2,3 --output-dir results
 ```
 
 建议把 `source <repo>/iluvatar_env.sh` 加入 `~/.bashrc`。
@@ -78,7 +78,7 @@ docker build -f docker/Dockerfile.iluvatar \
 docker run --rm -it --privileged -v /dev:/dev --ipc=host --shm-size=16g \
   -v $(pwd):/workspace -w /workspace \
   flagtensor:iluvatar \
-  python3 tools/run_tests.py --stages all --gpus 0,1,2,3
+  python3 tools/run_tests.py --stages all --full-suite --gpus 0,1,2,3
 ```
 
 Dockerfile 内已处理 PYTHONPATH 顺序 (pip site-packages 在前)、
@@ -94,11 +94,14 @@ python3 -c "import torch; print(torch.__version__, torch.cuda.is_available(), to
 python3 -c "import triton; print(triton.__version__, triton.__file__); assert hasattr(triton, 'Config')"
 python3 -c "import flagtensor; from flagtensor.runtime import device; print(device.vendor_name)"  # 期望 iluvatar
 python3 tools/run_tests.py --ops CUTENSOR_OP_ABS --gpus 0   # 单算子冒烟
-python3 tools/run_tests.py --stages all --gpus 0 --output-dir results  # 全量
+python3 tools/run_tests.py --stages all --full-suite --gpus 0 --output-dir results  # 全量
 ```
 
 期望: `Accuracy: 36/36 passed`, `Performance: 36/36 passed`
 (参考数据见 `docs/iluvatar_performance_report.md`)。
+
+> 天数是非 NVIDIA 后端，不加 `--full-suite` 时只跑 16 算子套件，上面这行期望值也就
+> 不会成立。规则见 `docs/hygon_adaptation.md` §3.4。
 
 ## 5. 常见问题 (FAQ)
 

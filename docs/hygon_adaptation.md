@@ -3,6 +3,9 @@
 > 适配时间: 2026-08
 > 适配目标: Hygon DCU (Deep Computing Unit, CUDA 兼容, torch_hcu 插件)
 > 适配结果: 36 个算子全部可在 Hygon DCU 上运行 accuracy + performance 测试
+>
+> **2026-10 更新**: `run_tests.py` 的厂商分层规则已整体重做, 海光**不再默认跑全量**,
+> 详见 §3.4 的取代说明。本报告其余部分记录的是 2026-08 的状态。
 
 ## 1. 背景
 
@@ -125,6 +128,18 @@ if _vendor not in ("nvidia", "ppu", "iluvatar", "kunlunxin", "hygon", "unknown")
 问题的直接修复点。顺带把已存在完整 backend 的 Iluvatar / Kunlunxin 也纳入全量白名单
 (此前它们也只能通过 `--ops` / `--op-list-file` 显式指定才能跑全量)。
 
+> **2026-10 取代说明**: 上面「按厂商逐一列举全量白名单」的做法已被整体废弃, 换成一条
+> 规则 —— **NVIDIA 跑 `--stages` 选中的全量, 其余所有厂商一律跑固定的 16 算子套件**
+> (`_NON_NVIDIA_OPS`, 含 `"unknown"`: 探测失败不再默认拿到全量)。受影响的厂商是
+> PPU / 海光 / 昇腾 / 天数 / 摩尔 / 燧原 / 沐曦 / T-Head / 昆仑芯等全部国产后端, 即海光
+> **默认回到 16 个算子**。需要全量时显式加 `--full-suite`, 或用 `--ops` /
+> `--op-list-file` 指定。
+>
+> 这次重做同时消掉了一处文档与代码的漂移: 本节下面声称 Iluvatar 已在全量白名单内,
+> 但 2026-10 之前的代码里白名单实际是 `("nvidia", "ppu", "kunlunxin", "hygon",
+> "unknown")` —— 并不含 `iluvatar`, 也就是说天数当时仍在跑 8 个算子。新规则下两者
+> 都是 16, 该不一致不再存在。
+
 ## 4. 现有 vendor 兼容性保证
 
 本次适配对 NVIDIA / PPU / Iluvatar / Kunlunxin 路径**完全零影响**, 验证如下:
@@ -153,6 +168,9 @@ if _vendor not in ("nvidia", "ppu", "iluvatar", "kunlunxin", "hygon", "unknown")
 - vendor 白名单是**严格扩展** (新增 `"iluvatar"`、`"kunlunxin"`、`"hygon"` 到 tuple)。
 - NVIDIA / PPU / unknown 路径仍在白名单内, 跑全量算子的行为不变。
 - 其他 vendor (Ascend / T-Head 等) 仍走 pilot 过滤, 行为不变。
+
+> **2026-10 起本节描述已失效** (见 §3.4): 白名单机制本身被移除, 改为「非 NVIDIA 一律
+> 16 算子」。海光、PPU 与 unknown 现在是这 16 个, 不再是全量。
 
 ### 4.4 _hygon/ 模块
 
@@ -202,13 +220,17 @@ if _vendor not in ("nvidia", "ppu", "iluvatar", "kunlunxin", "hygon", "unknown")
 
 ```bash
 # 全部 36 个算子 (stable + experimental + active)
-python tools/run_tests.py --stages all --gpus 0 --output-dir results_hygon
+# --full-suite 不可省: 海光属非 NVIDIA 后端, 默认只跑 16 算子套件
+python tools/run_tests.py --stages all --full-suite --gpus 0 --output-dir results_hygon
 
-# 仅 stable 算子 (默认)
-python tools/run_tests.py --stages stable --gpus 0
+# 仅 stable 算子 (NVIDIA 上 34 个; 海光不加 --full-suite 则为 16 个)
+python tools/run_tests.py --stages stable --full-suite --gpus 0
+
+# 海光默认形态: 16 算子套件
+python tools/run_tests.py --gpus 0
 
 # 强制指定 vendor (绕过自动检测)
-GEMS_VENDOR=hygon python tools/run_tests.py --stages stable --gpus 0
+GEMS_VENDOR=hygon python tools/run_tests.py --stages stable --full-suite --gpus 0
 ```
 
 ### 6.2 单算子测试

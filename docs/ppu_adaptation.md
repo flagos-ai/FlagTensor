@@ -377,10 +377,14 @@ baseline = get_baseline_class(OP_NAME)(dtype=x.dtype)
 
 ```bash
 # 全部 36 个算子（stable + experimental + active）
-python tools/run_tests.py --stages all --gpus 0,1 --output-dir results
+# --full-suite 不可省：PPU 属非 NVIDIA 后端，默认只跑 16 算子套件
+python tools/run_tests.py --stages all --full-suite --gpus 0,1 --output-dir results
 
-# 仅 stable 算子（默认）
-python tools/run_tests.py --stages stable --gpus 0,1
+# 仅 stable 算子（NVIDIA 上 34 个；PPU 不加 --full-suite 则为 16 个）
+python tools/run_tests.py --stages stable --full-suite --gpus 0,1
+
+# PPU 默认形态：16 算子套件
+python tools/run_tests.py --gpus 0,1
 ```
 
 ### 9.2 PPU 上的最终结果
