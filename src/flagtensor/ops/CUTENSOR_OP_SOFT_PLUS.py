@@ -18,7 +18,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.utils import make_unary_pointwise_from_family
-from flagtensor.utils.ascend_runtime import is_ascend as _is_ascend
+from flagtensor.runtime import is_ascend as _is_ascend
 
 
 @triton.jit

@@ -21,7 +21,7 @@ import triton.language as tl
 
 from flagtensor import runtime
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
-from flagtensor.utils.ascend_runtime import persistent_grid_from_meta
+from flagtensor.runtime import persistent_grid_from_meta
 from flagtensor.utils.libtuner import libtuner
 
 

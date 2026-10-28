@@ -26,11 +26,11 @@ from flagtensor.runtime import (
     device_str as _default_device_str,
     empty_cache as _device_empty_cache,
     is_accelerator_available as _is_accelerator_available,
+    is_ascend as _is_ascend,
     is_on_accelerator as _is_on_accelerator,
+    persistent_grid_from_meta,
     synchronize as _device_synchronize,
 )
-from flagtensor.utils.ascend_runtime import is_ascend as _is_ascend
-from flagtensor.utils.ascend_runtime import persistent_grid_from_meta
 
 DEFAULT_DTYPES = [torch.float16, torch.float32]
 DEFAULT_SHAPES = [(2**i,) for i in range(10, 24)]

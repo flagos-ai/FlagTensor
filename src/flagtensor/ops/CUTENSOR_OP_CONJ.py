@@ -19,7 +19,7 @@ import triton.language as tl
 from flagtensor import runtime
 from flagtensor.utils import libtuner
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
-from flagtensor.utils.ascend_runtime import is_ascend as _is_ascend
+from flagtensor.runtime import is_ascend as _is_ascend
 
 
 def _build_conj_kernel():

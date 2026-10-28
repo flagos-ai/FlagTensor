@@ -28,8 +28,8 @@ from flagtensor.ops.elementwise_common import (
 
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 from flagtensor.utils import libtuner
-from flagtensor.utils.ascend_runtime import is_ascend as _is_ascend
-from flagtensor.utils.ascend_runtime import persistent_grid_from_meta
+from flagtensor.runtime import is_ascend as _is_ascend
+from flagtensor.runtime import persistent_grid_from_meta
 
 
 # On Ascend the conventional "one program per tile" launch creates thousands
