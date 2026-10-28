@@ -345,6 +345,12 @@ class LibTuner(triton.runtime.Autotuner):
             for _ in range(self.num_warmups):
                 kernel_call()
             torch_device_fn.synchronize()
+
+            if _vendor == "ascend":
+                latency_ms = self._bench_ascend_graph(kernel_call)
+                if latency_ms is not None:
+                    return [latency_ms, latency_ms, latency_ms]
+
             # Timing
             n_reps = max(self.num_reps, 1)
             start = time.perf_counter()
@@ -359,6 +365,51 @@ class LibTuner(triton.runtime.Autotuner):
             return [latency_ms, latency_ms, latency_ms]
         except Exception:
             return [float("inf"), float("inf"), float("inf")]
+
+    @staticmethod
+    def _bench_ascend_graph(kernel_call: Callable[[], None]) -> Optional[float]:
+        """Time ``kernel_call`` by capturing it into an NPU graph and replaying.
+
+        On Ascend the triton Python launch path costs ~100us/call, which is
+        orders of magnitude more than the kernel itself for the shapes used in
+        the benchmarks. Timing Python calls would therefore pick configs based
+        on host launch overhead. Capturing the kernel launches into a graph and
+        timing the replay measures device execution only.
+        """
+        try:
+            import torch
+
+            if not hasattr(torch, "npu") or not hasattr(torch.npu, "NPUGraph"):
+                return None
+
+            capture_reps = 10
+            graph = torch.npu.NPUGraph()
+            with torch.npu.graph(graph):
+                for _ in range(capture_reps):
+                    kernel_call()
+            torch_device_fn.synchronize()
+
+            for _ in range(3):
+                graph.replay()
+            torch_device_fn.synchronize()
+
+            # Replay the graph a few times inside each timing window so the
+            # ~1us event resolution does not dominate small kernels.
+            replays = 5
+            timings = []
+            for _ in range(7):
+                start = torch.npu.Event(enable_timing=True)
+                end = torch.npu.Event(enable_timing=True)
+                start.record()
+                for _ in range(replays):
+                    graph.replay()
+                end.record()
+                torch_device_fn.synchronize()
+                timings.append(start.elapsed_time(end) / (replays * capture_reps))
+            timings.sort()
+            return timings[len(timings) // 2]
+        except Exception:
+            return None
 
     @cached_property
     def cache_key(self) -> str:

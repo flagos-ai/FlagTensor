@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.utils import make_unary_pointwise_from_family
+from flagtensor.utils.ascend_runtime import is_ascend as _is_ascend
 
 
 @triton.jit
@@ -28,4 +29,9 @@ _asin_kernel, asin = make_unary_pointwise_from_family(
     "asin",
     "asin_like",
     _asin_scalar,
+    # The asin/acos polynomial needs more UB temporaries than the other unary
+    # kernels; on Ascend it gets a dedicated (smaller-max-tile) tuning table.
+    config_key=(
+        "elementwise_unary_persistent_heavy" if _is_ascend() else None
+    ),
 )

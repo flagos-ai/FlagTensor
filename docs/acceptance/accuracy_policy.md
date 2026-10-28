@@ -41,7 +41,7 @@ This document defines the acceptance-facing accuracy policy for FlagTensor corre
 | `bfloat16` | `2e-2` | `2e-2` |
 | `float32` | `1e-5` | `1e-5` |
 
-Complex tolerances are not defined: Triton does not natively support complex dtypes. The only operator with complex support is `conj`, which handles complex via a dedicated kernel that decomposes real/imag parts at the Python level before launching Triton.
+Complex tolerances are not defined: Triton does not natively support complex dtypes. The only operator with complex support is `conj`, which handles complex via a dedicated kernel that decomposes real/imag parts at the Python level before launching Triton. On Ascend it instead returns a lazily-conjugated view (the same metadata-only operation as `torch.conj`), because materialising the result costs a full read+write of the tensor and `complex128`/`complex64` are not usable Triton element types there.
 
 ## Shape Policy
 

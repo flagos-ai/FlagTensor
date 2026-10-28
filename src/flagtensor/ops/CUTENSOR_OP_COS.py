@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.utils import make_unary_pointwise_from_family
+from flagtensor.utils.ascend_runtime import is_ascend as _is_ascend
 
 
 @triton.jit
@@ -28,4 +29,11 @@ _cos_kernel, cos = make_unary_pointwise_from_family(
     "cos",
     "cos_like",
     _cos_scalar,
+    # cos/sin/tan/softplus are function-unit bound on Ascend and their fp32
+    # lowering needs more UB temporaries than the plain pointwise kernels; the
+    # heavy table (tile <= 4096, 48 programs) both compiles and pipelines
+    # better for them.
+    config_key=(
+        "elementwise_unary_persistent_heavy" if _is_ascend() else None
+    ),
 )

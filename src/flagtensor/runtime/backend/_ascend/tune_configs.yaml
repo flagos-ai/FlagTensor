@@ -23,13 +23,76 @@ elementwise_unary:
     kernel_id:
       - 0
       - 1
+    # Triton-Ascend maps a program to a vector core, so ``num_warps`` and
+    # ``num_stages`` do not change codegen (triton-ascend warns about tuning
+    # them).  Only the kernel variant is worth tuning; keeping a single
+    # warp/stage value avoids compiling 12 kernels per shape bucket.
     warps:
-      - 2
-      - 4
-      - 8
+      - 1
     stages:
-      - 2
-      - 3
+      - 1
+
+# Tuning tables for the Ascend persistent kernels (see
+# heuristics_config_utils.py).  Their tile is much larger than the generic
+# kernels', so they get their own cache entries.
+elementwise_unary_persistent:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 1
+    stages:
+      - 1
+
+elementwise_unary_persistent_heavy:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 1
+    stages:
+      - 1
+
+elementwise_unary_persistent_wide:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 1
+    stages:
+      - 1
+
+elementwise_binary_persistent:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+    warps:
+      - 1
+    stages:
+      - 1
 
 elementwise_binary:
   - gen: true
@@ -41,13 +104,14 @@ elementwise_binary:
     kernel_id:
       - 0
       - 1
+    # Triton-Ascend maps a program to a vector core, so ``num_warps`` and
+    # ``num_stages`` do not change codegen (triton-ascend warns about tuning
+    # them).  Only the kernel variant is worth tuning; keeping a single
+    # warp/stage value avoids compiling 12 kernels per shape bucket.
     warps:
-      - 2
-      - 4
-      - 8
+      - 1
     stages:
-      - 2
-      - 3
+      - 1
 
 elementwise_trinary:
   - gen: true
@@ -59,13 +123,14 @@ elementwise_trinary:
     kernel_id:
       - 0
       - 1
+    # Triton-Ascend maps a program to a vector core, so ``num_warps`` and
+    # ``num_stages`` do not change codegen (triton-ascend warns about tuning
+    # them).  Only the kernel variant is worth tuning; keeping a single
+    # warp/stage value avoids compiling 12 kernels per shape bucket.
     warps:
-      - 2
-      - 4
-      - 8
+      - 1
     stages:
-      - 2
-      - 3
+      - 1
 
 CUTENSOR_OP_ADD:
   - META:

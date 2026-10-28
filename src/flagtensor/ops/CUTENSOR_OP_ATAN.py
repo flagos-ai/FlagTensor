@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.utils import make_unary_pointwise_from_family
+from flagtensor.utils.ascend_runtime import is_ascend as _is_ascend
 
 
 @triton.jit
@@ -28,4 +29,10 @@ _atan_kernel, atan = make_unary_pointwise_from_family(
     "atan",
     "atan_like",
     _atan_scalar,
+    # The fp32 atan lowering keeps several UB temporaries live and overflows
+    # the unified buffer at tile 8192 on Ascend ("ub overflow, requires
+    # 2097152 bits while 1572864 bits available"), so use the heavy table.
+    config_key=(
+        "elementwise_unary_persistent_heavy" if _is_ascend() else None
+    ),
 )

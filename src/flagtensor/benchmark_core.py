@@ -29,6 +29,8 @@ from flagtensor.runtime import (
     is_on_accelerator as _is_on_accelerator,
     synchronize as _device_synchronize,
 )
+from flagtensor.utils.ascend_runtime import is_ascend as _is_ascend
+from flagtensor.utils.ascend_runtime import persistent_grid_from_meta
 
 DEFAULT_DTYPES = [torch.float16, torch.float32]
 DEFAULT_SHAPES = [(2**i,) for i in range(10, 24)]
@@ -53,6 +55,20 @@ def _env_mode(default: str) -> str:
     if mode not in {"kernel", "operator", "wrapper"}:
         raise ValueError(f"unsupported benchmark mode: {mode}")
     return mode
+
+
+def _triton_grid(n_elements: int):
+    """Grid builder matching the launch used by the operator itself.
+
+    On Ascend the operators launch a persistent kernel (one program per vector
+    core); the benchmark must use the same mapping, otherwise the timed kernel
+    differs from the one users actually get.
+    """
+    if _is_ascend():
+        return lambda meta: (persistent_grid_from_meta(n_elements, meta),)
+    return lambda meta: (
+        triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
+    )
 
 
 def _env_shape_limit(default_shapes: Sequence[Tuple[int, ...]]) -> Sequence[Tuple[int, ...]]:
@@ -291,7 +307,17 @@ class Benchmark:
         if vendor_rtol is not None:
             rtol = max(rtol, vendor_rtol)
 
-        return torch.allclose(reference, test, atol=atol, rtol=rtol)
+        try:
+            return torch.allclose(reference, test, atol=atol, rtol=rtol)
+        except RuntimeError:
+            # Some vendor stacks register no device kernel for the comparison
+            # itself (e.g. torch_npu has no ``aclnnIsClose`` for complex64 /
+            # complex128, which makes ``conj`` unbenchmarkable).  The check is
+            # correctness-only — timing has already happened — so falling back
+            # to the CPU implementation is equivalent and vendor-neutral.
+            return torch.allclose(
+                reference.cpu(), test.cpu(), atol=atol, rtol=rtol
+            )
 
     def _get_op_slug(self) -> str:
         _OP_PREFIX = "CUTENSOR_OP_"
@@ -469,9 +495,7 @@ class Benchmark:
             x_view = input_x.view(real_dtype)
             y_view = y.view(real_dtype)
             n_elements = input_x.numel()
-            grid = lambda meta: (
-                triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-            )
+            grid = _triton_grid(n_elements)
 
             def run_kernel():
                 kernel[grid](x_view, y_view, n_elements)
@@ -481,9 +505,7 @@ class Benchmark:
 
         y = torch.empty_like(x)
         n_elements = y.numel()
-        grid = lambda meta: (
-            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-        )
+        grid = _triton_grid(n_elements)
 
         def run_kernel():
             kernel[grid](x, y, n_elements)
@@ -496,9 +518,7 @@ class Benchmark:
             return None
         out = torch.empty_like(z)
         n_elements = out.numel()
-        grid = lambda meta: (
-            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-        )
+        grid = _triton_grid(n_elements)
 
         def run_kernel():
             kernel[grid](x, y, z, out, n_elements)
@@ -511,9 +531,7 @@ class Benchmark:
             return None
         z = torch.empty_like(x)
         n_elements = z.numel()
-        grid = lambda meta: (
-            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-        )
+        grid = _triton_grid(n_elements)
 
         def run_kernel():
             kernel[grid](x, y, z, n_elements)
@@ -610,51 +628,65 @@ class Benchmark:
     def _do_bench_npu_graph(self, fn: Callable[[], torch.Tensor]) -> float:
         """Benchmark fn() using NPU graph capture (eliminates Python launch overhead).
 
-        Captures the callable into a NPU graph during warmup, then uses
-        ``triton.testing.do_bench`` on the graph replay (which only goes
-        through the C++ replay path, ~1us overhead per call).
+        The triton-ascend Python launch path costs ~100us/call, far more than
+        the kernel itself for small tensors, so wall-clock timing of repeated
+        Python calls measures the host, not the device.  Here the callable is
+        captured into a ``torch.npu.NPUGraph`` (repeating it a few times so the
+        per-call event resolution stays meaningful) and then replayed; the
+        replay path only goes through the C++ graph launcher.
 
-        Falls back to plain ``do_bench`` if graph capture fails (e.g. the
-        callable uses dynamic shapes or unsupported ops).
+        Falls back to plain ``do_bench`` if graph capture is unsupported.
         """
         import torch
 
-        # Try to capture the callable into a NPU graph.
-        # We need sample args; the fn signature is `() -> Tensor`,
-        # so we call it once to get the result tensor, then capture.
-        try:
-            sample = fn()
-            torch.npu.synchronize()
-
-            # make_graphed_callables expects a callable (args) -> result
-            # We wrap fn (no args) to match.
-            def wrapper(*args):
-                return fn()
-
-            graphed_fn = torch.npu.make_graphed_callables(wrapper, (sample,))
-            replay_fn = lambda: graphed_fn(sample)
-
-            # warmup the graph replay
-            for _ in range(self.config.warmup):
-                replay_fn()
-            self._synchronize_device()
-
-            latency = triton.testing.do_bench(
-                replay_fn,
-                warmup=self.config.warmup,
-                rep=self.config.repetitions,
-                return_mode="median",
-            )
-            return latency
-        except Exception:
-            # Fallback: plain do_bench (includes Python launch overhead,
-            # but at least produces a result instead of timing out).
+        def _fallback() -> float:
             return triton.testing.do_bench(
                 fn,
                 warmup=self.config.warmup,
                 rep=self.config.repetitions,
                 return_mode="median",
             )
+
+        if not hasattr(torch, "npu") or not hasattr(torch.npu, "NPUGraph"):
+            return _fallback()
+
+        capture_reps = 10
+        try:
+            # Compile / allocate before capturing; anything lazily initialised
+            # inside the capture region would end up frozen into the graph.
+            result = fn()
+            self._synchronize_device()
+
+            graph = torch.npu.NPUGraph()
+            with torch.npu.graph(graph):
+                for _ in range(capture_reps):
+                    result = fn()
+            self._synchronize_device()
+
+            for _ in range(3):
+                graph.replay()
+            self._synchronize_device()
+
+            # Event resolution on Ascend is ~1us, which is the same order as
+            # the kernel itself for the small shapes.  Replay the graph
+            # several times inside one event window so the per-call time is
+            # derived from a long interval instead of a single replay.
+            reps = max(int(self.config.repetitions), 1)
+            replays = max(1, reps // capture_reps)
+            timings = []
+            for _ in range(5):
+                start = torch.npu.Event(enable_timing=True)
+                end = torch.npu.Event(enable_timing=True)
+                start.record()
+                for _ in range(replays):
+                    graph.replay()
+                end.record()
+                torch.npu.synchronize()
+                timings.append(start.elapsed_time(end) / (replays * capture_reps))
+            timings.sort()
+            return timings[len(timings) // 2]
+        except Exception:
+            return _fallback()
 
     def time_wrapper(self, fn: Callable[[], torch.Tensor]) -> Tuple[float, torch.Tensor]:
         return self._time_host_loop(fn, synchronize_before_end=False)
