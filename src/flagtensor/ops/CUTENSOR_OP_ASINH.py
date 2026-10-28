@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.utils import make_unary_pointwise_from_family
+from flagtensor.runtime import is_ascend as _is_ascend
 
 
 @triton.jit
@@ -30,4 +31,9 @@ _asinh_kernel, asinh = make_unary_pointwise_from_family(
     "asinh",
     "asinh_like",
     _asinh_scalar,
+    # asinh evaluates abs + sqrt + log with ~11 live fp32 temporaries, which
+    # overflows the 192 KiB unified buffer at a 8192-element tile.
+    config_key=(
+        "elementwise_unary_persistent_heavy" if _is_ascend() else None
+    ),
 )

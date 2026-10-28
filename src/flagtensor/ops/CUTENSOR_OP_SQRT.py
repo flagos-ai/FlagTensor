@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.utils import make_unary_pointwise_from_family
+from flagtensor.runtime import is_ascend as _is_ascend
 
 
 @triton.jit
@@ -28,4 +29,10 @@ _sqrt_kernel, sqrt = make_unary_pointwise_from_family(
     "sqrt",
     "sqrt_like",
     _sqrt_scalar,
+    # Cheap single-op kernels keep only 2-3 UB buffers live, so on
+    # Ascend they can use a 2x larger tile than the generic unary
+    # entry (fewer loop trips, ~10% faster at HBM-bound sizes).
+    config_key=(
+        "elementwise_unary_persistent_wide" if _is_ascend() else None
+    ),
 )

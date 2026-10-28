@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.utils import make_unary_pointwise_from_family
+from flagtensor.runtime import is_ascend as _is_ascend
 
 
 @triton.jit
@@ -28,4 +29,9 @@ _sin_kernel, sin = make_unary_pointwise_from_family(
     "sin",
     "sin_like",
     _sin_scalar,
+    # See CUTENSOR_OP_COS.py: function-unit bound ops use the heavy table on
+    # Ascend so they compile and keep 48 programs busy.
+    config_key=(
+        "elementwise_unary_persistent_heavy" if _is_ascend() else None
+    ),
 )
