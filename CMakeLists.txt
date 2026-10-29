@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
-project(FlagTensor LANGUAGES CXX CUDA VERSION 0.1.0)
+# Only the CUDA driver/runtime API is used from C++ (no .cu sources), so the
+# CUDA language is not enabled; CUDAToolkit is located below. This keeps
+# nvcc out of the build requirements.
+project(FlagTensor LANGUAGES CXX VERSION 0.1.0)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 
 # ------------------------------- project-wide settings -------------------------------
