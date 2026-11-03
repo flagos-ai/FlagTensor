@@ -189,7 +189,23 @@ def assert_close(
     """
     resolved_dtype = dtype or actual.dtype
     resolved_atol, resolved_rtol = get_tolerance(resolved_dtype, atol=atol, rtol=rtol)
-    torch.testing.assert_close(actual, expected, atol=resolved_atol, rtol=resolved_rtol, equal_nan=equal_nan)
+    try:
+        torch.testing.assert_close(
+            actual, expected, atol=resolved_atol, rtol=resolved_rtol, equal_nan=equal_nan
+        )
+    except RuntimeError:
+        # Some vendor stacks register no device kernel for the comparison
+        # itself (e.g. torch_npu has no ``aclnnIsClose`` for complex64 /
+        # complex128, which makes ``conj`` uncomparable on the device).  A
+        # mismatch raises ``AssertionError``, not ``RuntimeError``, so falling
+        # back to the CPU comparison here cannot hide a real error.
+        torch.testing.assert_close(
+            actual.cpu(),
+            expected.cpu(),
+            atol=resolved_atol,
+            rtol=resolved_rtol,
+            equal_nan=equal_nan,
+        )
 
 
 def assert_equal(actual: torch.Tensor, expected: torch.Tensor, equal_nan: bool = False):

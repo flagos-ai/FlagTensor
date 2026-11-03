@@ -25,4 +25,15 @@ vendor_info = VendorInfoBase(
 ARCH_MAP = {}
 CUSTOMIZED_UNUSED_OPS = ()
 
+# Ascend uses torch_npu-aten (CANN aclnn) as the vendor baseline.  The
+# benchmark harness only probes this flag on the active vendor module, so it
+# must be declared here; otherwise every Ascend perf test is skipped as
+# "Vendor baseline unavailable" even when torch_npu is installed.
+try:  # pragma: no cover - depends on the Ascend runtime being installed
+    from flagtensor.torch_npu_baseline import torch_npu_available as _npu_available
+
+    BASELINE_AVAILABLE = bool(_npu_available())
+except Exception:  # pragma: no cover
+    BASELINE_AVAILABLE = False
+
 __all__ = ['*']

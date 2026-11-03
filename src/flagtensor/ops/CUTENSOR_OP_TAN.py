@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 from flagtensor.utils import make_unary_pointwise_from_family
+from flagtensor.runtime import is_ascend as _is_ascend
 
 
 @triton.jit
@@ -28,4 +29,8 @@ _tan_kernel, tan = make_unary_pointwise_from_family(
     "tan",
     "tan_like",
     _tan_scalar,
+    # See CUTENSOR_OP_COS.py: fp32 tan overflows the UB budget at tile 8192.
+    config_key=(
+        "elementwise_unary_persistent_heavy" if _is_ascend() else None
+    ),
 )

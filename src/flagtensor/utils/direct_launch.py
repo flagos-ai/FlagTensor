@@ -36,6 +36,7 @@ regular path, which compiles/looks the kernel up as usual.
 
 from __future__ import annotations
 
+import inspect
 import os
 from typing import Any, Optional, Tuple
 
@@ -118,12 +119,36 @@ def unwrap_jit(fn: Any) -> JITFunction:
 _STREAM_FNS: Optional[Tuple[Any, Any]] = None
 
 
+def _bind_stream_fn(fn: Any) -> Any:
+    """Adapt a driver's ``get_current_stream`` so it can be called as ``fn(device)``.
+
+    Triton's drivers declare it as ``get_current_stream(device=None)``, but not
+    every backend has to.  The fast path keys its cache on the stream, so an
+    arity mismatch must not surface as a ``TypeError`` on the operator hot path.
+    Checked once, when the pair is first resolved.
+    """
+    try:
+        inspect.signature(fn).bind(0)
+    except (TypeError, ValueError):
+        return lambda _device=None: fn()
+    return fn
+
+
 def _stream_fns() -> Tuple[Any, Any]:
     global _STREAM_FNS
     fns = _STREAM_FNS
     if fns is None:
-        fns = _STREAM_FNS = (driver.active.get_current_device,
-                             driver.active.get_current_stream)
+        active = driver.active
+        get_device = getattr(active, "get_current_device", None) or (lambda: 0)
+        get_stream = getattr(active, "get_current_stream", None)
+        if get_stream is None:
+            # A driver without a per-device stream concept is still usable:
+            # every launch then targets the same (default) stream, so the
+            # execution key collapses to the device alone.
+            get_stream = lambda _device=None: None
+        else:
+            get_stream = _bind_stream_fn(get_stream)
+        fns = _STREAM_FNS = (get_device, get_stream)
     return fns
 
 

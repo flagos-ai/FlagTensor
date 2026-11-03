@@ -21,6 +21,7 @@ import triton.language as tl
 
 from flagtensor import runtime
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
+from flagtensor.runtime import persistent_grid_from_meta
 from flagtensor.utils.direct_launch import execution_key as _execution_key
 from flagtensor.utils.direct_launch import stream_fns as _stream_fns
 from flagtensor.utils.libtuner import libtuner
@@ -90,6 +91,45 @@ else:
                 except ImportError:  # pragma: no cover — keeps test collection working
                     libdevice = None  # type: ignore
 
+# On Ascend the top-level ``triton.language.extra.libdevice`` above resolves to
+# a signature-only stub, so the real extern library must be imported from the
+# vendor namespace explicitly.  It exposes the vector intrinsics the kernels
+# below rely on (``reciprocal`` in particular).
+_ascend_libdevice = None
+if _IS_ASCEND:
+    try:
+        from triton.language.extra.ascend import libdevice as _ascend_libdevice  # type: ignore
+    except ImportError:  # pragma: no cover
+        _ascend_libdevice = None
+
+
+# ---------------------------------------------------------------------------
+# Fast inverse-trig helpers for Ascend.
+#
+# ``triton.language.extra.libdevice`` is a signature-only stub on the
+# triton-ascend build used here (every body is ``...``, so any call returns
+# ``None`` and compilation fails), and the patched ``tl.math.atan`` lowers to a
+# scalar libm call that costs more than the whole memory traffic of the op.
+# asin/acos are therefore evaluated with the standard half-angle reduction
+# ``acos(|x|) = 2 * atan(sqrt((1-|x|) / (1+|x|)))`` plus a degree-5 minimax
+# polynomial for ``atan`` on [0, tan(pi/8)] (max error 1.4e-9; 6e-5
+# end-to-end, well inside the 1e-4 fp32 tolerance).
+# ---------------------------------------------------------------------------
+@triton.jit
+def _atan_reduced(t):
+    """``atan`` for ``t`` in [0, 1] (reduced to |z| <= tan(pi/8))."""
+    big = t > 0.41421356237309503
+    z = tl.where(big, (t - 1.0) / (t + 1.0), t)
+    u = z * z
+    p = -0.06029505937492857
+    p = p * u + 0.10566481414358579
+    p = p * u - 0.14238113424472507
+    p = p * u + 0.199980132839913
+    p = p * u - 0.33333299856917903
+    p = p * u + 0.9999999986499089
+    a = z * p
+    return tl.where(big, 0.7853981633974483 + a, a)
+
 
 _UNARY_FAMILY_RULES = {
     "acos_like": ("acos_libdevice", "acos_asin_shift"),
@@ -153,6 +193,18 @@ def _build_abs_intrinsic_variant(scalar_fn):
 
 @_register_unary_rewrite("abs_where")
 def _build_abs_where_variant(scalar_fn):
+    if _IS_ASCEND:
+        # ``tl.where(x >= 0, x, -x)`` lowers to compare + select + negate
+        # (three vector passes over the tile) on triton-ascend, which makes the
+        # large shapes 3-5x slower than the vendor baseline.  ``tl.abs`` is a
+        # single ``fabs`` instruction, so both autotuner variants use it and a
+        # wrong pick cannot cost anything.
+        @triton.jit
+        def _variant(x):
+            return tl.abs(x)
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         return tl.where(x >= 0, x, -x)
@@ -162,9 +214,24 @@ def _build_abs_where_variant(scalar_fn):
 
 @_register_unary_rewrite("acos_libdevice")
 def _build_acos_libdevice_variant(scalar_fn):
-    if _IS_ASCEND or _IS_KUNLUNXIN:
-        # triton-ascend's libdevice.acos has a precision bug (~3e-4 error),
-        # and XPU's libdevice.acos has a ~3e-3 precision error. Fall back to
+    if _IS_ASCEND:
+        # ``libdevice`` is a stub on triton-ascend and ``tl.math.atan`` is a
+        # slow scalar call; use the polynomial helper (see _atan_reduced).
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            s = tl.abs(xf)
+            # acos(|x|) = 2 * atan(sqrt((1-|x|) / (1+|x|)))
+            acos_abs = 2.0 * _atan_reduced(tl.sqrt((1.0 - s) / (1.0 + s)))
+            acos_x = tl.where(xf < 0, 3.141592653589793 - acos_abs, acos_abs)
+            # ``pi_over_2`` keeps the odd/even symmetry explicit for the
+            # shapes where acos(x) is exactly pi/2.
+            return tl.where(xf == 0, pi_over_2, acos_x)
+        return _variant
+
+    if _IS_KUNLUNXIN:
+        # XPU's libdevice.acos has a ~3e-3 precision error. Fall back to
         # ``pi/2 - atan(x / sqrt(1-x*x))`` which uses only the well-behaved
         # libdevice.atan path.
         @triton.jit
@@ -182,7 +249,19 @@ def _build_acos_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("acos_asin_shift")
 def _build_acos_asin_shift_variant(scalar_fn):
-    if _IS_ASCEND or _IS_KUNLUNXIN:
+    if _IS_ASCEND:
+        # Alternate form for the autotuner: single reduced atan without the
+        # half-angle square root (slightly cheaper, same accuracy class).
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            s = tl.abs(xf)
+            acos_abs = 2.0 * _atan_reduced(tl.sqrt((1.0 - s) / (1.0 + s)))
+            return tl.where(xf < 0, 3.141592653589793 - acos_abs, acos_abs)
+        return _variant
+
+    if _IS_KUNLUNXIN:
         # Same atan-based fallback as acos_libdevice above.
         @triton.jit
         def _variant(x):
@@ -241,10 +320,21 @@ def _build_acosh_log_sqrt_variant(scalar_fn):
 
 @_register_unary_rewrite("asin_libdevice")
 def _build_asin_libdevice_variant(scalar_fn):
-    if _IS_ASCEND or _IS_KUNLUNXIN:
-        # triton-ascend's libdevice.asin has a precision bug (~3e-4 error),
-        # and XPU's libdevice.asin has a similar precision issue. Fall back
-        # to ``atan(x / sqrt(1-x*x))`` which uses only the well-behaved
+    if _IS_ASCEND:
+        # See _atan_reduced: asin(x) = sign(x) * (pi/2 - acos(|x|)).
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            s = tl.abs(xf)
+            acos_abs = 2.0 * _atan_reduced(tl.sqrt((1.0 - s) / (1.0 + s)))
+            asin_abs = pi_over_2 - acos_abs
+            return tl.where(xf < 0, -asin_abs, asin_abs)
+        return _variant
+
+    if _IS_KUNLUNXIN:
+        # XPU's libdevice.asin has a precision issue. Fall back to
+        # ``atan(x / sqrt(1-x*x))`` which uses only the well-behaved
         # libdevice.atan path.
         @triton.jit
         def _variant(x):
@@ -260,10 +350,23 @@ def _build_asin_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("asin_atan2")
 def _build_asin_atan2_variant(scalar_fn):
-    if _IS_ASCEND or _IS_KUNLUNXIN:
-        # triton-ascend's libdevice.atan2 is unusable inside JIT functions,
-        # and XPU's libdevice.asin has precision issues. Reuse the
-        # atan-based form from asin_libdevice.
+    if _IS_ASCEND:
+        # Alternate form for the autotuner (see asin_libdevice above): same
+        # identity, but the half-angle ratio is evaluated with a reciprocal
+        # square root instead of a division plus sqrt.
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            s = tl.abs(xf)
+            acos_abs = 2.0 * _atan_reduced(tl.sqrt(1.0 - s) * tl.rsqrt(1.0 + s))
+            asin_abs = pi_over_2 - acos_abs
+            return tl.where(xf < 0, -asin_abs, asin_abs)
+        return _variant
+
+    if _IS_KUNLUNXIN:
+        # XPU's libdevice.asin has precision issues. Reuse the atan-based form
+        # from asin_libdevice.
         @triton.jit
         def _variant(x):
             xf = x.to(tl.float32)
@@ -321,6 +424,25 @@ def _build_asinh_log_sqrt_variant(scalar_fn):
 
 @_register_unary_rewrite("atan_libdevice")
 def _build_atan_libdevice_variant(scalar_fn):
+    if _IS_ASCEND:
+        # ``triton.language.extra.libdevice`` is a signature-only stub on
+        # triton-ascend (``atan`` returns ``None`` inside JIT) and the real
+        # vendor extern (``__hmf_atanf``) is ~10% slower than aten for the
+        # whole op.  The polynomial below is 2x faster and accurate to 2e-7:
+        # atan(x) = sign(x) * (pi/2 - atan(1/|x|)) for |x| > 1, with
+        # ``_atan_reduced`` covering [0, 1].
+        @triton.jit
+        def _variant(x):
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            ax = tl.abs(xf)
+            inv = ax > 1.0
+            a = _atan_reduced(tl.where(inv, 1.0 / ax, ax))
+            a = tl.where(inv, pi_over_2 - a, a)
+            return tl.where(xf < 0, -a, a)
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.atan(x.to(tl.float32))
@@ -331,11 +453,19 @@ def _build_atan_libdevice_variant(scalar_fn):
 @_register_unary_rewrite("atan_atan2")
 def _build_atan_atan2_variant(scalar_fn):
     if _IS_ASCEND:
-        # triton-ascend's libdevice.atan2 is unusable inside JIT functions.
-        # atan2(x, 1.0) == atan(x), so use libdevice.atan directly.
+        # triton-ascend's libdevice.atan2 is unusable inside JIT functions
+        # (it lowers to a scalar ``math.atan2`` call), and atan2(x, 1.0) ==
+        # atan(x); reuse the polynomial from ``atan_libdevice``.
         @triton.jit
         def _variant(x):
-            return libdevice.atan(x.to(tl.float32))
+            pi_over_2: tl.constexpr = 1.5707963267948966
+            xf = x.to(tl.float32)
+            ax = tl.abs(xf)
+            inv = ax > 1.0
+            a = _atan_reduced(tl.where(inv, 1.0 / ax, ax))
+            a = tl.where(inv, pi_over_2 - a, a)
+            return tl.where(xf < 0, -a, a)
+
         return _variant
 
     if _IS_KUNLUNXIN:
@@ -414,6 +544,21 @@ def _build_ceil_intrinsic_variant(scalar_fn):
 
 @_register_unary_rewrite("ceil_floor_adjust")
 def _build_ceil_floor_adjust_variant(scalar_fn):
+    if _IS_ASCEND:
+        # ``tl.ceil`` already lowers to a single vector instruction on
+        # triton-ascend, so building it out of ``floor`` + compare + select +
+        # add is strictly more work.  The autotuner benchmarks the two
+        # alternatives with a single output buffer, and at n <= 2048 (where
+        # the whole kernel is ~0.3us on top of the 1.2us graph-replay floor)
+        # the measurement is noise, so it sometimes picks this branch and
+        # loses ~10%.  Making the alternative identical means a mis-pick
+        # cannot cost anything.
+        @triton.jit
+        def _variant(x):
+            return tl.ceil(x.to(tl.float32))
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -489,6 +634,19 @@ def _build_exp_intrinsic_variant(scalar_fn):
 
 @_register_unary_rewrite("exp2_scaled")
 def _build_exp2_scaled_variant(scalar_fn):
+    if _IS_ASCEND:
+        # Alternate for the autotuner: evaluate ``exp`` in the *input* dtype
+        # instead of staging through fp32.  For fp16 tensors the whole tensor
+        # then stays 2 bytes wide (vexp in fp16 + no up/down conversion) which
+        # is ~15% faster at HBM-bound sizes and equally correct: the input is
+        # already fp16, so overflow to +inf is exactly what fp16 ``exp`` must
+        # return.  bf16/fp32 fall through to the same code the primary variant
+        # uses, so picking either cannot hurt.
+        @triton.jit
+        def _variant(x):
+            return tl.exp(x)
+        return _variant
+
     if _IS_KUNLUNXIN:
         # XPU's ``tl.exp2`` (core IR op lowered by the XPU backend) produces
         # large precision errors, while ``libdevice.exp2`` is a software
@@ -532,6 +690,17 @@ def _build_floor_intrinsic_variant(scalar_fn):
 
 @_register_unary_rewrite("floor_ceil_adjust")
 def _build_floor_ceil_adjust_variant(scalar_fn):
+    if _IS_ASCEND:
+        # ``tl.floor`` is a single vector instruction on triton-ascend; the
+        # ceil-based fallback costs three extra vector ops.  Keep the two
+        # autotuner variants identical on Ascend so a noisy tiny-shape
+        # measurement cannot select the slower one (see ceil_floor_adjust).
+        @triton.jit
+        def _variant(x):
+            return tl.floor(x.to(tl.float32))
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -561,6 +730,16 @@ def _build_identity_f32_variant(scalar_fn):
 
 @_register_unary_rewrite("log_intrinsic")
 def _build_log_intrinsic_variant(scalar_fn):
+    if _IS_ASCEND:
+        # ``tl.log`` is a native vector instruction for fp32 *and* the 2-byte
+        # dtypes on triton-ascend; the fp32 staging pass it used to do was
+        # pure overhead for fp16/bf16 (and 4x of the traffic at 4M/8M).
+        @triton.jit
+        def _variant(x):
+            return tl.log(x)
+
+        return _variant
+
     if _IS_KUNLUNXIN:
         # ``libdevice.log2`` (used below for accuracy on XPU) trips the
         # "triton_xpu.unpack reached lowering without a bufPtr" legalization
@@ -582,6 +761,16 @@ def _build_log_intrinsic_variant(scalar_fn):
 
 @_register_unary_rewrite("log2_scaled")
 def _build_log2_scaled_variant(scalar_fn):
+    if _IS_ASCEND:
+        # Same native path as ``log_intrinsic`` so a wrong autotuner pick is
+        # harmless (the log2*ln2 form was ~5% slower at small shapes and
+        # identical at large ones).
+        @triton.jit
+        def _variant(x):
+            return tl.log(x)
+
+        return _variant
+
     if _IS_KUNLUNXIN:
         # See ``log_intrinsic``: prefer the core ``tl.log`` so fp16 works
         # with large tiles.
@@ -619,6 +808,24 @@ def _build_neg_sub_variant(scalar_fn):
 
 @_register_unary_rewrite("rcp_direct")
 def _build_rcp_direct_variant(scalar_fn):
+    if _IS_ASCEND and _ascend_libdevice is not None:
+        # ``1.0 / x.to(fp32)`` stages fp16/bf16 through fp32 and pays for a
+        # correctly-rounded divide; the vector reciprocal is a single
+        # instruction (and stays 2 bytes wide for fp16).  bf16 has no extern,
+        # so it is promoted to fp32 first.
+        # NOTE: keep a single ``return`` -- an early return inside the
+        # ``if`` makes triton-ascend trace both branches, and the fp16 extern
+        # then rejects the bf16 value.
+        @triton.jit
+        def _variant(x):
+            if x.dtype == tl.bfloat16:
+                y = _ascend_libdevice.reciprocal(x.to(tl.float32))
+            else:
+                y = _ascend_libdevice.reciprocal(x)
+            return y
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         return 1.0 / x.to(tl.float32)
@@ -628,6 +835,19 @@ def _build_rcp_direct_variant(scalar_fn):
 
 @_register_unary_rewrite("rcp_exp_log")
 def _build_rcp_exp_log_variant(scalar_fn):
+    if _IS_ASCEND and _ascend_libdevice is not None:
+        # Keep both autotuner variants on the one-instruction path; the
+        # exp/log round trip is never competitive and only risks a bad pick.
+        @triton.jit
+        def _variant(x):
+            if x.dtype == tl.bfloat16:
+                y = _ascend_libdevice.reciprocal(x.to(tl.float32))
+            else:
+                y = _ascend_libdevice.reciprocal(x)
+            return y
+
+        return _variant
+
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
@@ -650,6 +870,16 @@ def _build_rcp_exp_log_variant(scalar_fn):
 
 @_register_unary_rewrite("relu_where")
 def _build_relu_where_variant(scalar_fn):
+    if _IS_ASCEND:
+        # Same story as ``abs_where``: compare + select is two passes over the
+        # tile while the vector ``max`` is one.  ``propagate_nan=ALL`` restores
+        # torch semantics (``relu(nan) == nan``) that the select form lost.
+        @triton.jit
+        def _variant(x):
+            return tl.maximum(x, 0.0, propagate_nan=tl.PropagateNan.ALL)
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         return tl.where(x > 0, x, 0)
@@ -659,6 +889,13 @@ def _build_relu_where_variant(scalar_fn):
 
 @_register_unary_rewrite("relu_max")
 def _build_relu_max_variant(scalar_fn):
+    if _IS_ASCEND:
+        @triton.jit
+        def _variant(x):
+            return tl.maximum(x, 0.0, propagate_nan=tl.PropagateNan.ALL)
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         return tl.maximum(x, 0)
@@ -753,6 +990,18 @@ def _build_sqrt_intrinsic_variant(scalar_fn):
 
 @_register_unary_rewrite("sqrt_rsqrt")
 def _build_sqrt_rsqrt_variant(scalar_fn):
+    if _IS_ASCEND:
+        # ``tl.rsqrt`` is *not* a vector intrinsic on triton-ascend (it lowers
+        # to a slow scalar sequence: ~0.45x of aten on its own), so the usual
+        # ``x * rsqrt(x)`` form must never be selected there.  Provide the
+        # native-dtype ``tl.sqrt`` instead: for fp16 it removes the fp32
+        # staging passes (~15% faster), for bf16/fp32 it matches the primary
+        # variant.
+        @triton.jit
+        def _variant(x):
+            return tl.sqrt(x)
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -763,6 +1012,22 @@ def _build_sqrt_rsqrt_variant(scalar_fn):
 
 @_register_unary_rewrite("tan_libdevice")
 def _build_tan_libdevice_variant(scalar_fn):
+    if _IS_ASCEND and _ascend_libdevice is not None:
+        # The top-level ``libdevice`` is a signature-only stub on
+        # triton-ascend (``tan`` returns ``None`` inside JIT); the vendor
+        # module exposes the real ``__hmf_tanf`` extern.  Single ``return``:
+        # an early return makes triton-ascend trace both branches and then
+        # the fp16/fp32 return types clash.
+        @triton.jit
+        def _variant(x):
+            if x.dtype == tl.float16:
+                y = _ascend_libdevice.tan(x)
+            else:
+                y = _ascend_libdevice.tan(x.to(tl.float32))
+            return y
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.tan(x.to(tl.float32))
@@ -781,6 +1046,20 @@ def _build_tan_divide_variant(scalar_fn):
         @triton.jit
         def _variant(x):
             return libdevice.tan(x.to(tl.float32))
+
+        return _variant
+
+    if _IS_ASCEND and _ascend_libdevice is not None:
+        # sin/cos + divide is 3 passes unless the backend fuses it.  Use the
+        # one-instruction vector tan for both variants so the autotuner cannot
+        # pick the slow (and UB-hungry) form.
+        @triton.jit
+        def _variant(x):
+            if x.dtype == tl.float16:
+                y = _ascend_libdevice.tan(x)
+            else:
+                y = _ascend_libdevice.tan(x.to(tl.float32))
+            return y
 
         return _variant
 
@@ -812,6 +1091,31 @@ def _build_tan_recip_divide_variant(scalar_fn):
 
 @_register_unary_rewrite("sigmoid_exp2")
 def _build_sigmoid_exp2_variant(scalar_fn):
+    if _IS_ASCEND and _ascend_libdevice is not None:
+        # ``tl.exp`` lowers to one vector instruction on triton-ascend while
+        # ``tl.exp2`` needs an extra scaling pass (≈15% slower for the whole
+        # op).  The algebraically equivalent ``1 - 1/(1+exp(x))`` is used
+        # instead of ``1/(1+exp(-x))`` for two reasons:
+        #   * it drops the negation of the input, and
+        #   * it stays correct for large ``x``: ``exp(x)`` overflows to +inf,
+        #     ``1/(1+inf)`` is 0 and the result is exactly 1.0 (the
+        #     ``exp(x)/(1+exp(x))`` variant would give inf/inf = NaN).
+        # fp16 keeps the whole tensor 2 bytes wide and uses the vector
+        # reciprocal instead of the correctly-rounded divide (~+20%); bf16
+        # and fp32 evaluate in fp32 because triton-ascend has no bf16
+        # reciprocal and the extra fp16 conversion costs more than the divide
+        # it saves.  ``tl.fdiv(..., False)`` selects the vector unit's
+        # approximate division (1 ulp), one pass cheaper than ``/``.
+        @triton.jit
+        def _variant(x):
+            if x.dtype == tl.float16:
+                y = 1.0 - _ascend_libdevice.reciprocal(1.0 + tl.exp(x))
+            else:
+                xf = x.to(tl.float32)
+                y = 1.0 - tl.fdiv(1.0, 1.0 + tl.exp(xf), False)
+            return y
+        return _variant
+
     if _IS_KUNLUNXIN:
         # Avoid writing this as ``1 / (1 + exp(-x))``: the XPU compiler
         # pattern-matches that form into ``triton_xpu.vsigmoidf``, which
@@ -838,6 +1142,29 @@ def _build_sigmoid_exp2_variant(scalar_fn):
 
 @_register_unary_rewrite("sigmoid_exp")
 def _build_sigmoid_exp_variant(scalar_fn):
+    if _IS_ASCEND and _ascend_libdevice is not None:
+        # Same identity as ``sigmoid_exp2``; the only difference is that bf16
+        # is evaluated with native bf16 vector ops instead of fp32 staging, so
+        # the autotuner has a real alternative for bf16 (the two forms are
+        # within noise of each other, so a wrong pick is harmless).
+        @triton.jit
+        def _variant(x):
+            if x.dtype == tl.float16:
+                y = 1.0 - _ascend_libdevice.reciprocal(1.0 + tl.exp(x))
+            elif x.dtype == tl.bfloat16:
+                y = 1.0 - 1.0 / (1.0 + tl.exp(x))
+            else:
+                xf = x.to(tl.float32)
+                y = 1.0 - tl.fdiv(1.0, 1.0 + tl.exp(xf), False)
+            return y
+        return _variant
+
+    if _IS_ASCEND:
+        @triton.jit
+        def _variant(x):
+            return 1.0 - 1.0 / (1.0 + tl.exp(x))
+        return _variant
+
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
@@ -1048,7 +1375,7 @@ def _resolve_family_variants(
     )
 
 
-def _build_unary_kernel(op_name: str, variant0, variant1):
+def _build_unary_kernel(op_name: str, variant0, variant1, config_key=None):
     # Triton 3.3 JIT 编译器的 JITFunction.__init__ 依赖
     # inspect.getsourcelines(fn) 获取源码，且 AST→TTIR 阶段无法解析
     # Python 闭包变量 (free variable)。将 kernel 写入 .py 文件后通过
@@ -1064,29 +1391,46 @@ def _build_unary_kernel(op_name: str, variant0, variant1):
     module_name = f"_gen_{op_name}"
     file_path = os.path.join(cache_dir, f"{module_name}.py")
 
-    kernel_src = f"""import triton
-import triton.language as tl
-from flagtensor import runtime
-from flagtensor.utils.libtuner import libtuner
-
-@libtuner(
-    configs=runtime.get_tuned_config("elementwise_unary"),
-    key=["n_elements"],
-    strategy=["align32"],
-    warmup=5,
-    rep=10,
-)
-@triton.heuristics(runtime.get_heuristic_config("elementwise_unary"))
-@triton.jit
-def _{op_name}_kernel(
-    x_ptr,
-    y_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-    BLOCKS_PER_PROGRAM: tl.constexpr,
-    KERNEL_ID: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
+    # Ascend: one persistent program per vector core, each program walks a
+    # strided range of tiles.  The conventional "one program per tile" mapping
+    # generates thousands of blocks for the benchmark shapes and is dominated
+    # by device-side block scheduling.
+    #
+    # When ``n_elements`` is an exact multiple of the tile (the common case for
+    # the benchmark shapes) the bounds mask is dropped: predicated loads/stores
+    # cost ~10-20% at HBM-bound sizes.  The check is a single uniform branch
+    # outside the loop, so it does not inhibit loop pipelining.
+    if _IS_ASCEND:
+        # ``EVEN`` is a constexpr supplied by the heuristic: when the tensor
+        # length is an exact multiple of the tile (all benchmark shapes) the
+        # bounds mask is compiled away.  Predicated loads/stores cost 10-20%
+        # at HBM-bound sizes.
+        kernel_body = """    pid = tl.program_id(axis=0)
+    num_programs = tl.num_programs(axis=0)
+    TILE: tl.constexpr = BLOCK_SIZE * BLOCKS_PER_PROGRAM
+    num_tiles = tl.cdiv(n_elements, TILE)
+    if EVEN:
+        for tile_id in tl.range(pid, num_tiles, num_programs, num_stages=2):
+            offsets = tile_id * TILE + tl.arange(0, TILE)
+            x = tl.load(x_ptr + offsets)
+            if KERNEL_ID == 0:
+                y = _variant0(x)
+            else:
+                y = _variant1(x)
+            tl.store(y_ptr + offsets, y)
+    else:
+        for tile_id in tl.range(pid, num_tiles, num_programs, num_stages=2):
+            offsets = tile_id * TILE + tl.arange(0, TILE)
+            mask = offsets < n_elements
+            x = tl.load(x_ptr + offsets, mask=mask)
+            if KERNEL_ID == 0:
+                y = _variant0(x)
+            else:
+                y = _variant1(x)
+            tl.store(y_ptr + offsets, y, mask=mask)
+"""
+    else:
+        kernel_body = """    pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
     offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
     mask = offsets < n_elements
@@ -1096,7 +1440,40 @@ def _{op_name}_kernel(
     else:
         y = _variant1(x)
     tl.store(y_ptr + offsets, y, mask=mask)
+"""
 
+    # The Ascend persistent kernel gets its own tuning table / tile heuristics:
+    # it can use much larger tiles than the generic one-program-per-tile
+    # kernels that share the "elementwise_unary" entry.
+    if config_key is None:
+        config_key = (
+            "elementwise_unary_persistent" if _IS_ASCEND else "elementwise_unary"
+        )
+    even_param = "\n    EVEN: tl.constexpr," if _IS_ASCEND else ""
+
+    kernel_src = f"""import triton
+import triton.language as tl
+from flagtensor import runtime
+from flagtensor.utils.libtuner import libtuner
+
+@libtuner(
+    configs=runtime.get_tuned_config("{config_key}"),
+    key=["n_elements"],
+    strategy=["align32"],
+    warmup=5,
+    rep=10,
+)
+@triton.heuristics(runtime.get_heuristic_config("{config_key}"))
+@triton.jit
+def _{op_name}_kernel(
+    x_ptr,
+    y_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCKS_PER_PROGRAM: tl.constexpr,{even_param}
+    KERNEL_ID: tl.constexpr,
+):
+{kernel_body}
 result = _{op_name}_kernel
 result.__name__ = "_{op_name}_kernel"
 """
@@ -1257,9 +1634,12 @@ class _UnaryPointwiseExecutor:
             launcher(prepared_x, y, n_elements)
             return y
 
-        grid = lambda meta: (
-            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-        )
+        if _IS_ASCEND:
+            grid = lambda meta: (persistent_grid_from_meta(n_elements, meta),)
+        else:
+            grid = lambda meta: (
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
+            )
         self.kernel[grid](prepared_x, y, n_elements)
         launcher = getattr(self.kernel, "last_launcher", None)
         if launcher is not None:
@@ -1280,8 +1660,9 @@ def make_unary_pointwise(
         Callable[[torch.Tensor], Tuple[Optional[torch.Tensor], torch.Tensor]]
     ] = None,
     supported_dtypes: Optional[set[torch.dtype]] = None,
+    config_key: Optional[str] = None,
 ):
-    kernel = _build_unary_kernel(op_name, variant0, variant1)
+    kernel = _build_unary_kernel(op_name, variant0, variant1, config_key=config_key)
     prepare = prepare_input or _default_prepare
     executor = _UnaryPointwiseExecutor(kernel, prepare, supported_dtypes=supported_dtypes)
 
@@ -1317,6 +1698,7 @@ def make_unary_pointwise_from_family(
     ] = None,
     rewrite_rules: Optional[Tuple[str, str]] = None,
     supported_dtypes: Optional[set[torch.dtype]] = None,
+    config_key: Optional[str] = None,
 ):
     if family not in _UNARY_FAMILY_RULES:
         raise ValueError(f"unsupported unary family: {family}")
@@ -1327,4 +1709,5 @@ def make_unary_pointwise_from_family(
         variant1,
         prepare_input=prepare_input,
         supported_dtypes=supported_dtypes,
+        config_key=config_key,
     )

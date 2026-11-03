@@ -85,6 +85,79 @@ def is_on_accelerator(tensor: torch.Tensor) -> bool:
         return False
 
 
+def is_ascend() -> bool:
+    """Return True when FlagTensor is running on the Huawei Ascend backend."""
+    try:
+        return device.vendor_name == "ascend"
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Persistent-grid launch mapping
+# ---------------------------------------------------------------------------
+# On Ascend a Triton launch is a *block* launch handled by the device-side
+# scheduler, so one program per tile (the conventional CUDA mapping) makes the
+# runtime schedule hundreds/thousands of blocks for what is a pure vector
+# pointwise kernel.  The mapping recommended there is the opposite: launch one
+# persistent program per vector core and let each program walk a strided range
+# of tiles.  Other vendors keep one-program-per-tile, which ``triton.cdiv``
+# computes directly.
+#
+# 40 is the vector-core count (AIV) reported by current 910B/910C builds; it is
+# only used when the driver query fails.
+_FALLBACK_VECTOR_CORE_NUM = 40
+_vector_core_num = None
+
+
+def vector_core_num() -> int:
+    """Return the number of vector cores on the active device.
+
+    Cached after the first successful query.  Returns 1 off Ascend and a safe
+    fallback when the driver query fails, so callers never special-case it.
+    """
+    global _vector_core_num
+    if _vector_core_num is not None:
+        return _vector_core_num
+    if not is_ascend():
+        _vector_core_num = 1
+        return _vector_core_num
+    try:
+        import triton.runtime.driver as driver
+
+        try:
+            device_index = torch_device_fn.current_device()
+        except Exception:
+            device_index = device_str
+        properties = driver.active.utils.get_device_properties(device_index)
+        value = int(properties.get("num_vectorcore") or 0)
+        if value <= 0:
+            raise ValueError("invalid num_vectorcore")
+        _vector_core_num = value
+    except Exception:
+        _vector_core_num = _FALLBACK_VECTOR_CORE_NUM
+    return _vector_core_num
+
+
+def persistent_grid(n_elements: int, tile_size: int) -> int:
+    """Grid size for a persistent elementwise kernel.
+
+    One program per vector core, capped by the number of tiles so tiny tensors
+    do not pay for idle programs.  Always at least one program, which keeps
+    zero-element tensors valid.
+    """
+    if tile_size <= 0 or n_elements <= 0:
+        return 1
+    num_tiles = (int(n_elements) + int(tile_size) - 1) // int(tile_size)
+    return max(1, min(num_tiles, vector_core_num()))
+
+
+def persistent_grid_from_meta(n_elements, meta) -> int:
+    """``persistent_grid`` using the ``BLOCK_SIZE``/``BLOCKS_PER_PROGRAM`` meta."""
+    tile_size = int(meta["BLOCK_SIZE"]) * int(meta["BLOCKS_PER_PROGRAM"])
+    return persistent_grid(n_elements, tile_size)
+
+
 def get_tuned_config(op_name):
     return config_loader.get_tuned_config(op_name)
 
@@ -118,6 +191,10 @@ __all__ = [
     "synchronize",
     "empty_cache",
     "is_on_accelerator",
+    "is_ascend",
+    "vector_core_num",
+    "persistent_grid",
+    "persistent_grid_from_meta",
     "get_tuned_config",
     "get_heuristic_config",
     "replace_customized_ops",

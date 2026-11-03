@@ -16,10 +16,14 @@ import os
 
 import pytest
 import torch
-import triton
 
 from flagtensor import abs
-from flagtensor.benchmark_core import Benchmark, BenchmarkConfig, vendor_baseline_available
+from flagtensor.benchmark_core import (
+    Benchmark,
+    BenchmarkConfig,
+    _triton_grid,
+    vendor_baseline_available,
+)
 from flagtensor.config import DEFAULT_ABS_BENCHMARK_SHAPES, DEFAULT_BENCHMARK_DTYPES
 from flagtensor.cutensor import CUTENSOR_AVAILABLE
 from flagtensor.ops.CUTENSOR_OP_ABS import _abs_kernel
@@ -87,9 +91,11 @@ class AbsBenchmark(Benchmark):
     def build_triton_kernel_callable(self, x):
         y = torch.empty_like(x)
         n_elements = y.numel()
-        grid = lambda meta: (
-            triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
-        )
+        # Must match the launch used by the operator: on Ascend that is the
+        # persistent grid (one program per vector core), not one program per
+        # tile.  With the old per-tile grid the timed kernel ran one tile per
+        # program and was up to 5x slower than what users get.
+        grid = _triton_grid(n_elements)
 
         def run_kernel():
             _abs_kernel[grid](x, y, n_elements)
