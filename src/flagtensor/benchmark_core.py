@@ -574,6 +574,13 @@ class Benchmark:
 
         if self._use_npu_graph:
             latency = self._do_bench_npu_graph(fn)
+        elif self._use_host_loop_timing:
+            # ``triton.testing.do_bench`` relies on CUDA events.  On several
+            # CUDA-compatible accelerators (Kunlunxin XPU, PPU, ...) the
+            # event timer returns 0, which breaks do_bench with a
+            # ZeroDivisionError.  Measure with a synchronised host loop
+            # instead, matching ``LibTuner._bench``'s non-NVIDIA path.
+            latency, _ = self._time_host_loop(fn, synchronize_before_end=True)
         else:
             latency = triton.testing.do_bench(
                 fn,
@@ -604,6 +611,16 @@ class Benchmark:
                 return False
             import torch
             return hasattr(torch, "npu") and torch.npu.is_available()
+        except Exception:
+            return False
+
+    @property
+    def _use_host_loop_timing(self) -> bool:
+        """Use wall-clock host-loop timing on vendors whose event timer does
+        not work (Kunlunxin XPU, PPU, Hygon, ...)."""
+        try:
+            from flagtensor.runtime import device as _ft_device
+            return _ft_device.vendor_name not in ("nvidia", "ascend")
         except Exception:
             return False
 

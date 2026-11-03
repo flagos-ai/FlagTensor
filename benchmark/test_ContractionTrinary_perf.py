@@ -97,7 +97,10 @@ class TensorContractionTrinaryBenchmark(Benchmark):
     def baseline_impl(self, a, b, c, d):
         baseline = self.operator_baselines.get(a.dtype)
         if baseline is None:
-            baseline = self._get_baseline_instance(a.dtype)
+            if _ContractionTrinaryBaseline is not None:
+                baseline = _ContractionTrinaryBaseline(dtype=a.dtype)
+            else:
+                baseline = self._get_baseline_instance(a.dtype)
             self.operator_baselines[a.dtype] = baseline
         mode_a, mode_b, mode_c, mode_d, mode_e, _, _ = _tensor_contraction_trinary_case(tuple(a.shape), tuple(b.shape), tuple(c.shape))
         return baseline(a, b, c, d=d, alpha=1.25, beta=0.5, mode_a=mode_a, mode_b=mode_b, mode_c=mode_c, mode_d=mode_d, mode_e=mode_e)

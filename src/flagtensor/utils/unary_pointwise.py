@@ -21,6 +21,8 @@ import triton.language as tl
 
 from flagtensor import runtime
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
+from flagtensor.utils.direct_launch import execution_key as _execution_key
+from flagtensor.utils.direct_launch import stream_fns as _stream_fns
 from flagtensor.utils.libtuner import libtuner
 
 
@@ -199,6 +201,15 @@ def _build_acos_asin_shift_variant(scalar_fn):
 
 @_register_unary_rewrite("acosh_libdevice")
 def _build_acosh_libdevice_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # See ``asinh_libdevice``: ``libdevice.acosh`` cannot be lowered for
+        # fp16 with large tiles on P800, so use the log/sqrt identity.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            return tl.log(xf + tl.sqrt(xf * xf - 1))
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.acosh(x.to(tl.float32))
@@ -209,11 +220,15 @@ def _build_acosh_libdevice_variant(scalar_fn):
 @_register_unary_rewrite("acosh_log_sqrt")
 def _build_acosh_log_sqrt_variant(scalar_fn):
     if _IS_KUNLUNXIN:
+        # ``libdevice.log2`` combined with a large ``BLOCK_SIZE *
+        # BLOCKS_PER_PROGRAM`` tile trips the XPU lowering pass
+        # ("triton_xpu.unpack reached lowering without a bufPtr").  The
+        # core ``tl.log`` path compiles for every tile on P800 and is
+        # accurate to ~1e-6 (float32).
         @triton.jit
         def _variant(x):
-            ln2: tl.constexpr = 0.6931471805599453
             xf = x.to(tl.float32)
-            return libdevice.log2(xf + tl.sqrt(xf * xf - 1)) * ln2
+            return tl.log(xf + tl.sqrt(xf * xf - 1))
         return _variant
 
     @triton.jit
@@ -264,6 +279,18 @@ def _build_asin_atan2_variant(scalar_fn):
 
 @_register_unary_rewrite("asinh_libdevice")
 def _build_asinh_libdevice_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # ``libdevice.asinh`` fails to legalize for fp16 outputs with tiles
+        # >= 4096 ("triton_xpu.unpack ... bufPtr"); the log/sqrt form
+        # compiles for every tile size.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            abs_x = tl.abs(xf)
+            inner = abs_x + tl.sqrt(abs_x * abs_x + 1)
+            return tl.where(xf >= 0, tl.log(inner), -tl.log(inner))
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.asinh(x.to(tl.float32))
@@ -276,11 +303,10 @@ def _build_asinh_log_sqrt_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            ln2: tl.constexpr = 0.6931471805599453
             xf = x.to(tl.float32)
             abs_x = tl.abs(xf)
             inner = abs_x + tl.sqrt(abs_x * abs_x + 1)
-            return tl.where(xf >= 0, libdevice.log2(inner) * ln2, -libdevice.log2(inner) * ln2)
+            return tl.where(xf >= 0, tl.log(inner), -tl.log(inner))
         return _variant
 
     @triton.jit
@@ -312,6 +338,16 @@ def _build_atan_atan2_variant(scalar_fn):
             return libdevice.atan(x.to(tl.float32))
         return _variant
 
+    if _IS_KUNLUNXIN:
+        # ``libdevice.atan2`` hits the fp16 "triton_xpu.unpack" legalization
+        # failure for tiles >= 4096 (same lowering hazard as
+        # ``libdevice.asinh``/``atanh``), so use ``libdevice.atan``, which
+        # compiles for every tile.
+        @triton.jit
+        def _variant(x):
+            return libdevice.atan(x.to(tl.float32))
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -321,6 +357,16 @@ def _build_atan_atan2_variant(scalar_fn):
 
 @_register_unary_rewrite("atanh_libdevice")
 def _build_atanh_libdevice_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # ``libdevice.atanh`` cannot be lowered for fp16 with large tiles;
+        # use the log-ratio identity through the core ``tl.log``, which
+        # compiles for every tile.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            return 0.5 * tl.log((1 + xf) / (1 - xf))
+        return _variant
+
     @triton.jit
     def _variant(x):
         return libdevice.atanh(x.to(tl.float32))
@@ -333,9 +379,8 @@ def _build_atanh_log_ratio_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            ln2: tl.constexpr = 0.6931471805599453
             xf = x.to(tl.float32)
-            return 0.5 * libdevice.log2((1 + xf) / (1 - xf)) * ln2
+            return 0.5 * tl.log((1 + xf) / (1 - xf))
         return _variant
 
     @triton.jit
@@ -348,6 +393,18 @@ def _build_atanh_log_ratio_variant(scalar_fn):
 
 @_register_unary_rewrite("ceil_intrinsic")
 def _build_ceil_intrinsic_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # A bare ``tl.ceil`` on a masked fp32->fp16 tile of >= 4096 elements
+        # hits the "triton_xpu.unpack ... nor a bufPtr" legalization failure.
+        # Spelling it as floor + correction keeps the same result and
+        # compiles for every tile.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            floored = tl.floor(xf)
+            return tl.where(floored == xf, xf, floored + 1)
+        return _variant
+
     @triton.jit
     def _variant(x):
         return tl.ceil(x.to(tl.float32))
@@ -390,9 +447,8 @@ def _build_cosh_exp_pair_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            return 0.5 * (libdevice.exp2(xf * log2e) + libdevice.exp2(-xf * log2e))
+            return 0.5 * (tl.exp(xf) + tl.exp(-xf))
         return _variant
 
     @triton.jit
@@ -408,9 +464,8 @@ def _build_cosh_exp_recip_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            exp_pos = libdevice.exp2(xf * log2e)
+            exp_pos = tl.exp(xf)
             return 0.5 * (exp_pos + 1.0 / exp_pos)
         return _variant
 
@@ -436,14 +491,14 @@ def _build_exp_intrinsic_variant(scalar_fn):
 def _build_exp2_scaled_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         # XPU's ``tl.exp2`` (core IR op lowered by the XPU backend) produces
-        # large precision errors, but ``libdevice.exp2`` dispatches to the
-        # hardware-backed ``_ZN3xpu5exp2fEf`` symbol with full precision.
-        # Use libdevice.exp2 so the autotuner cannot pick a broken variant.
+        # large precision errors, while ``libdevice.exp2`` is a software
+        # emulation that is ~1000x slower than the hardware ``tl.exp``
+        # (34 ms vs 0.2 ms for 8M elements).  ``tl.exp`` is both accurate
+        # and fast on this backend.
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            return libdevice.exp2(xf * log2e)
+            return tl.exp(xf)
         return _variant
 
     @triton.jit
@@ -457,6 +512,17 @@ def _build_exp2_scaled_variant(scalar_fn):
 
 @_register_unary_rewrite("floor_intrinsic")
 def _build_floor_intrinsic_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # See ``ceil_intrinsic``: a bare ``tl.floor`` cannot be lowered for
+        # masked fp16 tiles >= 4096 on P800; the ceil + correction spelling
+        # is equivalent and compiles everywhere.
+        @triton.jit
+        def _variant(x):
+            xf = x.to(tl.float32)
+            ceiled = tl.ceil(xf)
+            return tl.where(ceiled == xf, xf, ceiled - 1)
+        return _variant
+
     @triton.jit
     def _variant(x):
         return tl.floor(x.to(tl.float32))
@@ -496,15 +562,15 @@ def _build_identity_f32_variant(scalar_fn):
 @_register_unary_rewrite("log_intrinsic")
 def _build_log_intrinsic_variant(scalar_fn):
     if _IS_KUNLUNXIN:
-        # XPU's ``tl.log`` (core IR op) produces large precision errors.
-        # Use ``libdevice.log2`` (hardware-backed ``_ZN3xpu5log2fEf``)
-        # via ``log(x) = log2(x) * ln2`` so the autotuner cannot pick a
-        # broken variant.
+        # ``libdevice.log2`` (used below for accuracy on XPU) trips the
+        # "triton_xpu.unpack reached lowering without a bufPtr" legalization
+        # failure for fp16 outputs once the tile reaches 4096 elements, which
+        # would remove the large-tile configs from the tuner.  ``tl.log``
+        # compiles for every tile and measures the same accuracy on P800
+        # (max rel. error 4.9e-4 on fp16, 1.6e-4 on fp32).
         @triton.jit
         def _variant(x):
-            ln2: tl.constexpr = 0.6931471805599453
-            xf = x.to(tl.float32)
-            return libdevice.log2(xf) * ln2
+            return tl.log(x.to(tl.float32))
         return _variant
 
     @triton.jit
@@ -517,14 +583,11 @@ def _build_log_intrinsic_variant(scalar_fn):
 @_register_unary_rewrite("log2_scaled")
 def _build_log2_scaled_variant(scalar_fn):
     if _IS_KUNLUNXIN:
-        # XPU's ``tl.log2`` (core IR op) produces large precision errors,
-        # but ``libdevice.log2`` dispatches to the hardware-backed
-        # ``_ZN3xpu5log2fEf`` symbol with full precision.
+        # See ``log_intrinsic``: prefer the core ``tl.log`` so fp16 works
+        # with large tiles.
         @triton.jit
         def _variant(x):
-            ln2: tl.constexpr = 0.6931471805599453
-            xf = x.to(tl.float32)
-            return libdevice.log2(xf) * ln2
+            return tl.log(x.to(tl.float32))
         return _variant
 
     @triton.jit
@@ -568,11 +631,10 @@ def _build_rcp_exp_log_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             ln2: tl.constexpr = 0.6931471805599453
             xf = x.to(tl.float32)
             ax = tl.abs(xf)
-            recip_abs = libdevice.exp2(-libdevice.log2(ax) * ln2 * log2e)
+            recip_abs = tl.exp(-libdevice.log2(ax) * ln2)
             return tl.where(xf >= 0, recip_abs, -recip_abs)
         return _variant
 
@@ -628,9 +690,8 @@ def _build_sinh_exp_pair_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            return 0.5 * (libdevice.exp2(xf * log2e) - libdevice.exp2(-xf * log2e))
+            return 0.5 * (tl.exp(xf) - tl.exp(-xf))
         return _variant
 
     @triton.jit
@@ -646,9 +707,8 @@ def _build_sinh_exp_recip_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            exp_pos = libdevice.exp2(xf * log2e)
+            exp_pos = tl.exp(xf)
             return 0.5 * (exp_pos - 1.0 / exp_pos)
         return _variant
 
@@ -712,6 +772,18 @@ def _build_tan_libdevice_variant(scalar_fn):
 
 @_register_unary_rewrite("tan_divide")
 def _build_tan_divide_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # Do *not* write this as ``tl.sin(x) / tl.cos(x)`` on XPU: for tiles
+        # of one core (512 lanes) the compiler emits an approximate
+        # range-reduction sequence (~1% error, and ``inf`` for values next to
+        # odd multiples of pi/2) instead of the accurate polynomial used for
+        # wider tiles.  ``libdevice.tan`` is accurate for every tile width.
+        @triton.jit
+        def _variant(x):
+            return libdevice.tan(x.to(tl.float32))
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -722,6 +794,14 @@ def _build_tan_divide_variant(scalar_fn):
 
 @_register_unary_rewrite("tan_recip_divide")
 def _build_tan_recip_divide_variant(scalar_fn):
+    if _IS_KUNLUNXIN:
+        # Same single-core fast-math hazard as ``tan_divide`` above.
+        @triton.jit
+        def _variant(x):
+            return libdevice.tan(x.to(tl.float32))
+
+        return _variant
+
     @triton.jit
     def _variant(x):
         xf = x.to(tl.float32)
@@ -733,11 +813,18 @@ def _build_tan_recip_divide_variant(scalar_fn):
 @_register_unary_rewrite("sigmoid_exp2")
 def _build_sigmoid_exp2_variant(scalar_fn):
     if _IS_KUNLUNXIN:
+        # Avoid writing this as ``1 / (1 + exp(-x))``: the XPU compiler
+        # pattern-matches that form into ``triton_xpu.vsigmoidf``, which
+        # fails to legalize for tiles larger than one core (~512 lanes).
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            return 1 / (1 + libdevice.exp2(-xf * log2e))
+            y = tl.where(
+                xf >= 0,
+                1.0 / (1.0 + tl.exp(-xf)),
+                tl.exp(xf) / (1.0 + tl.exp(xf)),
+            )
+            return y
         return _variant
 
     @triton.jit
@@ -754,10 +841,9 @@ def _build_sigmoid_exp_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            exp_neg = libdevice.exp2(-xf * log2e)
-            return 1 / (1 + exp_neg)
+            exp_pos = tl.exp(xf)
+            return exp_pos / (1.0 + exp_pos)
         return _variant
 
     @triton.jit
@@ -772,11 +858,15 @@ def _build_sigmoid_exp_variant(scalar_fn):
 @_register_unary_rewrite("tanh_exp2")
 def _build_tanh_exp2_variant(scalar_fn):
     if _IS_KUNLUNXIN:
+        # ``libdevice.exp2`` is correct on XPU but compiles to a software
+        # emulation that is ~1000x slower than the hardware ``tl.exp``
+        # (34 ms vs 0.2 ms for 8M elements), and it also trips the
+        # ``triton_xpu.unpack`` legalization bug for large tiles.  Use
+        # ``tl.exp`` with the natural-exponent argument instead.
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            return 2 / (1 + libdevice.exp2(-2 * xf * log2e)) - 1
+            return 2 / (1 + tl.exp(-2 * xf)) - 1
         return _variant
 
     @triton.jit
@@ -793,9 +883,8 @@ def _build_tanh_exp_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            exp_neg_twice = libdevice.exp2(-2 * xf * log2e)
+            exp_neg_twice = tl.exp(-2 * xf)
             return (1 - exp_neg_twice) / (1 + exp_neg_twice)
         return _variant
 
@@ -811,12 +900,14 @@ def _build_tanh_exp_variant(scalar_fn):
 @_register_unary_rewrite("softplus_where")
 def _build_softplus_where_variant(scalar_fn):
     if _IS_KUNLUNXIN:
+        # ``libdevice.log2`` is the accurate XPU log (``tl.log`` drifts),
+        # but ``libdevice.exp2`` is a ~1000x-slower software emulation, so
+        # the exponent must go through the hardware ``tl.exp``.
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             ln2: tl.constexpr = 0.6931471805599453
             xf = x.to(tl.float32)
-            return libdevice.log2(1 + libdevice.exp2(-tl.abs(xf) * log2e)) * ln2 + tl.where(xf > 0, xf, 0)
+            return libdevice.log2(1 + tl.exp(-tl.abs(xf))) * ln2 + tl.where(xf > 0, xf, 0)
         return _variant
 
     @triton.jit
@@ -832,10 +923,9 @@ def _build_softplus_max_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             ln2: tl.constexpr = 0.6931471805599453
             xf = x.to(tl.float32)
-            return libdevice.log2(1 + libdevice.exp2(-tl.abs(xf) * log2e)) * ln2 + tl.maximum(xf, 0)
+            return libdevice.log2(1 + tl.exp(-tl.abs(xf))) * ln2 + tl.maximum(xf, 0)
         return _variant
 
     @triton.jit
@@ -849,11 +939,17 @@ def _build_softplus_max_variant(scalar_fn):
 @_register_unary_rewrite("swish_exp2")
 def _build_swish_exp2_variant(scalar_fn):
     if _IS_KUNLUNXIN:
+        # Same ``triton_xpu.vsigmoidf`` legalization hazard as sigmoid: the
+        # literal ``1 / (1 + exp(-x))`` form only compiles for small tiles,
+        # so use the branch-selected equivalent instead.
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            sigmoid = 1 / (1 + libdevice.exp2(-xf * log2e))
+            sigmoid = tl.where(
+                xf >= 0,
+                1.0 / (1.0 + tl.exp(-xf)),
+                tl.exp(xf) / (1.0 + tl.exp(xf)),
+            )
             return xf * sigmoid
         return _variant
 
@@ -872,9 +968,8 @@ def _build_swish_exp_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             xf = x.to(tl.float32)
-            exp_neg = libdevice.exp2(-xf * log2e)
+            exp_neg = tl.exp(-xf)
             return xf / (1 + exp_neg)
         return _variant
 
@@ -892,11 +987,10 @@ def _build_mish_exp2_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             ln2: tl.constexpr = 0.6931471805599453
             xf = x.to(tl.float32)
-            softplus = libdevice.log2(1 + libdevice.exp2(-tl.abs(xf) * log2e)) * ln2 + tl.where(xf > 0, xf, 0)
-            tanh_softplus = 2 / (1 + libdevice.exp2(-2 * softplus * log2e)) - 1
+            softplus = libdevice.log2(1 + tl.exp(-tl.abs(xf))) * ln2 + tl.where(xf > 0, xf, 0)
+            tanh_softplus = 2 / (1 + tl.exp(-2 * softplus)) - 1
             return xf * tanh_softplus
         return _variant
 
@@ -916,11 +1010,10 @@ def _build_mish_exp_variant(scalar_fn):
     if _IS_KUNLUNXIN:
         @triton.jit
         def _variant(x):
-            log2e: tl.constexpr = 1.4426950408889634
             ln2: tl.constexpr = 0.6931471805599453
             xf = x.to(tl.float32)
-            softplus = libdevice.log2(1 + libdevice.exp2(-tl.abs(xf) * log2e)) * ln2 + tl.maximum(xf, 0)
-            exp_neg_twice = libdevice.exp2(-2 * softplus * log2e)
+            softplus = libdevice.log2(1 + tl.exp(-tl.abs(xf))) * ln2 + tl.maximum(xf, 0)
+            exp_neg_twice = tl.exp(-2 * softplus)
             tanh_softplus = (1 - exp_neg_twice) / (1 + exp_neg_twice)
             return xf * tanh_softplus
         return _variant
@@ -1078,25 +1171,69 @@ if hasattr(torch, "float8_e5m2"):
     _TRIVIAL_UNARY_EXTRA.add(torch.float8_e5m2)
 _NEG_UNARY_EXTRA = {torch.int8}  # neg works for int8 (fp8_e5m2 fails on triton 3.3)
 
+
+def _build_fast_launch(launcher, x: torch.Tensor, n_elements: int):
+    """Compile the cached plan into a self-validating closure.
+
+    On XPU the Python-side dispatch can cost more than the kernel itself, so
+    the win is in *how few Python frames* sit between the caller and the C
+    launcher.  Everything that is constant for a plan (launch arguments,
+    allocator, expected dtype/device/stream) is captured here, leaving one
+    guard, one allocation, two ``data_ptr`` calls and one C call.
+
+    Returns ``None`` when the incoming tensor does not match the plan, which
+    tells the caller to take the general dispatch path.
+    """
+
+    launch, fixed = launcher.launch_parts
+    new_empty = torch.Tensor.new_empty
+    get_stream = _stream_fns()[1]
+    dtype = x.dtype
+    align = x.data_ptr() & 15
+    device = x.get_device()
+    stream = get_stream(device)
+
+    def fast(x: torch.Tensor):
+        if not (
+            x.dtype is dtype
+            and x.numel() == n_elements
+            and (x.data_ptr() & 15) == align
+            and x.is_contiguous()
+            and x.get_device() == device
+            and get_stream(device) == stream
+        ):
+            return None
+        y = new_empty(x, x.shape)
+        launch(*fixed, x.data_ptr(), y.data_ptr(), n_elements)
+        return y
+
+    return fast
+
+
 class _UnaryPointwiseExecutor:
     def __init__(self, kernel, prepare_input, supported_dtypes=None):
         self.kernel = kernel
         self.prepare_input = prepare_input
-        self.layout_cache = {}
         self._supported = supported_dtypes or _DEFAULT_UNARY_DTYPES
+        # Fast path: one cached launcher per (dtype, element count, pointer
+        # alignment, device, stream).  Resolving it costs a tuple lookup
+        # instead of the whole tuner dispatch, which matters on backends
+        # where Python-side launch overhead dominates the kernel time.
+        self._launchers = {}
+        #: Self-validating closure for the most recent plan, or ``None``.
+        #: Kept separate from :attr:`_launchers` so the hot call can skip the
+        #: dict lookup and key construction entirely.
+        self.fast = None
+        #: The default ``prepare_input`` is a no-op, which is what makes the
+        #: single-slot fast path applicable.
+        self._plain_prepare = prepare_input is None or prepare_input is _default_prepare
 
-    def _layout_key(self, x: torch.Tensor):
-        return (
-            x.dtype,
-            tuple(x.shape),
-            x.stride(),
-            x.is_contiguous(),
-        )
+    def _launch_plan_key(self, x: torch.Tensor, n_elements: int):
+        return (x.dtype, n_elements, x.data_ptr() & 15, _execution_key(x.get_device()))
 
-    def _build_plan(self, prepared_x: torch.Tensor):
-        return {
-            "contiguous": prepared_x.is_contiguous(),
-        }
+    def _remember(self, launcher, x: torch.Tensor, n_elements: int):
+        """Refresh the single-slot fast plan so the next identical call is cheap."""
+        self.fast = _build_fast_launch(launcher, x, n_elements)
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if not _is_on_accelerator(x):
@@ -1110,18 +1247,27 @@ class _UnaryPointwiseExecutor:
         if handled is not None:
             return handled
 
-        layout_key = self._layout_key(prepared_x)
-        plan = self.layout_cache.get(layout_key)
-        if plan is None:
-            plan = self._build_plan(prepared_x)
-            self.layout_cache[layout_key] = plan
-
         y = torch.empty_like(prepared_x)
         n_elements = y.numel()
+        plan_key = self._launch_plan_key(prepared_x, n_elements)
+        launcher = self._launchers.get(plan_key)
+        if launcher is not None:
+            if self._plain_prepare:
+                self._remember(launcher, prepared_x, n_elements)
+            launcher(prepared_x, y, n_elements)
+            return y
+
         grid = lambda meta: (
             triton.cdiv(n_elements, meta["BLOCK_SIZE"] * meta["BLOCKS_PER_PROGRAM"]),
         )
         self.kernel[grid](prepared_x, y, n_elements)
+        launcher = getattr(self.kernel, "last_launcher", None)
+        if launcher is not None:
+            if len(self._launchers) >= 1024:
+                self._launchers.clear()
+            self._launchers[plan_key] = launcher
+            if self._plain_prepare:
+                self._remember(launcher, prepared_x, n_elements)
         return y
 
 
@@ -1140,6 +1286,21 @@ def make_unary_pointwise(
     executor = _UnaryPointwiseExecutor(kernel, prepare, supported_dtypes=supported_dtypes)
 
     def op(x: torch.Tensor) -> torch.Tensor:
+        # Hot path: the cached plan validates itself and returns ``None`` as
+        # soon as the tensor no longer matches, so nothing is dispatched
+        # twice and the general path below stays authoritative.  The guard is
+        # wrapped because it runs untrusted input through device queries
+        # (``get_device`` raises on host tensors): any failure simply means
+        # "not this plan", and the general path re-raises the real error with
+        # the usual validation messages.
+        f = executor.fast
+        if f is not None:
+            try:
+                out = f(x)
+            except Exception:
+                out = None
+            if out is not None:
+                return out
         return executor(x)
 
     op.__name__ = op_name

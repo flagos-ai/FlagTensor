@@ -32,6 +32,6 @@ def test_atanh_correctness(shape, dtype):
         pytest.skip("Accelerator unavailable")
     x = torch.empty(shape, device=_device_str, dtype=dtype).uniform_(-0.99, 0.99)
     ref = to_reference(x, upcast=True)
-    ref_out = torch.atanh(x)
+    ref_out = torch.atanh(ref)
     y = atanh(x)
     gems_assert_close(y, ref_out, dtype)

@@ -43,4 +43,14 @@ HEURISTICS_CONFIGS = {
         'BLOCK_SIZE': simple_elementwise_blocksize_heur,
         'BLOCKS_PER_PROGRAM': simple_elementwise_blocks_per_program_heur,
     },
+    # ``conj`` reads the interleaved real/imag buffer as one contiguous run of
+    # ``2 * n_elements`` lanes, so it has its own key: vendors whose tile
+    # heuristic differs for that layout (Kunlunxin) override it, everyone else
+    # falls through to this entry.  ``conj`` used the ``elementwise_unary``
+    # entry before it had a key of its own, so listing the same two functions
+    # here keeps its tile selection unchanged on those vendors.
+    'elementwise_conj': {
+        'BLOCK_SIZE': simple_elementwise_blocksize_heur,
+        'BLOCKS_PER_PROGRAM': simple_elementwise_blocks_per_program_heur,
+    },
 }

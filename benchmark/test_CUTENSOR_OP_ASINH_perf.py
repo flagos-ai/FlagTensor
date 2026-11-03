@@ -69,7 +69,7 @@ class AsinhBenchmark(Benchmark):
         return asinh(x)
 
     def reference_impl(self, x):
-        return torch.asinh(x)
+        return torch.asinh(x.float()).to(x.dtype)
 
 
 @pytest.mark.performance

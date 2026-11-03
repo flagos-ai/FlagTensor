@@ -28,7 +28,7 @@ from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
     warmup=5,
     rep=10,
 )
-@triton.heuristics(runtime.get_heuristic_config("elementwise_unary"))
+@triton.heuristics(runtime.get_heuristic_config("elementwise_conj"))
 @triton.jit
 def _conj_kernel(
     x_ptr,
@@ -38,23 +38,27 @@ def _conj_kernel(
     BLOCKS_PER_PROGRAM: tl.constexpr,
     KERNEL_ID: tl.constexpr,
 ):
+    # Work on the *flat* interleaved real/imag buffer: a stride-2 access
+    # pattern (``2*offset`` / ``2*offset + 1``) is dramatically slower than a
+    # contiguous one on XPU, so load a contiguous run of 2*BLOCK floats and
+    # negate the odd (imaginary) lanes.
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
+    n_lanes = n_elements * 2
     if KERNEL_ID == 0:
-        offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-        mask = offsets < n_elements
-        real = tl.load(x_ptr + 2 * offsets, mask=mask)
-        imag = tl.load(x_ptr + 2 * offsets + 1, mask=mask)
-        tl.store(y_ptr + 2 * offsets, real, mask=mask)
-        tl.store(y_ptr + 2 * offsets + 1, -imag, mask=mask)
+        offsets = 2 * block_start + tl.arange(0, 2 * BLOCK_SIZE * BLOCKS_PER_PROGRAM)
+        mask = offsets < n_lanes
+        value = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.where((offsets % 2) == 0, value, -value)
+        tl.store(y_ptr + offsets, y, mask=mask)
     else:
         for block_idx in tl.static_range(0, BLOCKS_PER_PROGRAM):
-            offsets = block_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-            mask = offsets < n_elements
-            real = tl.load(x_ptr + 2 * offsets, mask=mask)
-            imag = tl.load(x_ptr + 2 * offsets + 1, mask=mask)
-            tl.store(y_ptr + 2 * offsets, real, mask=mask)
-            tl.store(y_ptr + 2 * offsets + 1, 0 - imag, mask=mask)
+            base = 2 * (block_start + block_idx * BLOCK_SIZE)
+            offsets = base + tl.arange(0, 2 * BLOCK_SIZE)
+            mask = offsets < n_lanes
+            value = tl.load(x_ptr + offsets, mask=mask)
+            y = tl.where((offsets % 2) == 0, value, -value)
+            tl.store(y_ptr + offsets, y, mask=mask)
 
 
 def conj(x: torch.Tensor) -> torch.Tensor:
