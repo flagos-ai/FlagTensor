@@ -16,6 +16,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flagtensor import runtime
 from flagtensor.utils import make_unary_pointwise_from_family
 
 
@@ -24,8 +25,16 @@ def _atanh_scalar(x):
     return 0.5 * tl.log((1 + x) / (1 - x))
 
 
+_MTHREADS_REWRITE_RULES = (
+    ("atanh_log_ratio", "atanh_log_ratio")
+    if runtime.device.vendor_name == "mthreads"
+    else None
+)
+
+
 _atanh_kernel, atanh = make_unary_pointwise_from_family(
     "atanh",
     "atanh_like",
     _atanh_scalar,
+    rewrite_rules=_MTHREADS_REWRITE_RULES,
 )

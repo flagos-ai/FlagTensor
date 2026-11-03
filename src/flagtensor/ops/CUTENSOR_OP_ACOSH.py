@@ -16,6 +16,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flagtensor import runtime
 from flagtensor.utils import make_unary_pointwise_from_family
 
 
@@ -24,8 +25,16 @@ def _acosh_scalar(x):
     return tl.log(x + tl.sqrt(x * x - 1))
 
 
+_MTHREADS_REWRITE_RULES = (
+    ("acosh_log_sqrt", "acosh_log_sqrt")
+    if runtime.device.vendor_name == "mthreads"
+    else None
+)
+
+
 _acosh_kernel, acosh = make_unary_pointwise_from_family(
     "acosh",
     "acosh_like",
     _acosh_scalar,
+    rewrite_rules=_MTHREADS_REWRITE_RULES,
 )

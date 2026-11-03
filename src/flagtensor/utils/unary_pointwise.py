@@ -280,6 +280,40 @@ def _build_acos_asin_shift_variant(scalar_fn):
     return _variant
 
 
+@triton.jit
+def _atan_poly_from_scaled(value):
+    pi_over_2: tl.constexpr = 1.5707963267948966
+    xf = value.to(tl.float32)
+    ax = tl.abs(xf)
+    use_recip = ax > 1.0
+    z = tl.where(use_recip, 1.0 / ax, ax)
+    t = z * z
+    p = 0.003049968053146109
+    p = p * t + -0.01682744845907338
+    p = p * t + 0.04385559893427329
+    p = p * t + -0.07596809856142807
+    p = p * t + 0.10681421027256047
+    p = p * t + -0.1421319619537072
+    p = p * t + 0.19993716142481666
+    p = p * t + -0.33333120780994563
+    p = p * t + 0.9999999880828081
+    result = z * p
+    result = tl.where(use_recip, pi_over_2 - result, result)
+    return tl.where(xf < 0, -result, result)
+
+
+@_register_unary_rewrite("acos_atan_poly")
+def _build_acos_atan_poly_variant(scalar_fn):
+    @triton.jit
+    def _variant(x):
+        pi_over_2: tl.constexpr = 1.5707963267948966
+        xf = x.to(tl.float32)
+        atan_x = xf / tl.sqrt(1.0 - xf * xf)
+        return pi_over_2 - _atan_poly_from_scaled(atan_x)
+
+    return _variant
+
+
 @_register_unary_rewrite("acosh_libdevice")
 def _build_acosh_libdevice_variant(scalar_fn):
     if _IS_KUNLUNXIN:
@@ -379,6 +413,17 @@ def _build_asin_atan2_variant(scalar_fn):
     def _variant(x):
         xf = x.to(tl.float32)
         return 2 * libdevice.atan2(xf, 1 + tl.sqrt(1 - xf * xf))
+    return _variant
+
+
+@_register_unary_rewrite("asin_atan_poly")
+def _build_asin_atan_poly_variant(scalar_fn):
+    @triton.jit
+    def _variant(x):
+        xf = x.to(tl.float32)
+        atan_x = xf / tl.sqrt(1.0 - xf * xf)
+        return _atan_poly_from_scaled(atan_x)
+
     return _variant
 
 
@@ -484,6 +529,15 @@ def _build_atan_atan2_variant(scalar_fn):
     def _variant(x):
         xf = x.to(tl.float32)
         return libdevice.atan2(xf, 1.0)
+    return _variant
+
+
+@_register_unary_rewrite("atan_poly")
+def _build_atan_poly_variant(scalar_fn):
+    @triton.jit
+    def _variant(x):
+        return _atan_poly_from_scaled(x)
+
     return _variant
 
 

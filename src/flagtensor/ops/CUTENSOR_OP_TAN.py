@@ -16,6 +16,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flagtensor import runtime
 from flagtensor.utils import make_unary_pointwise_from_family
 from flagtensor.runtime import is_ascend as _is_ascend
 
@@ -23,6 +24,13 @@ from flagtensor.runtime import is_ascend as _is_ascend
 @triton.jit
 def _tan_scalar(x):
     return tl.sin(x) / tl.cos(x)
+
+
+_MTHREADS_REWRITE_RULES = (
+    ("tan_divide", "tan_recip_divide")
+    if runtime.device.vendor_name == "mthreads"
+    else None
+)
 
 
 _tan_kernel, tan = make_unary_pointwise_from_family(
@@ -33,4 +41,5 @@ _tan_kernel, tan = make_unary_pointwise_from_family(
     config_key=(
         "elementwise_unary_persistent_heavy" if _is_ascend() else None
     ),
+    rewrite_rules=_MTHREADS_REWRITE_RULES,
 )
