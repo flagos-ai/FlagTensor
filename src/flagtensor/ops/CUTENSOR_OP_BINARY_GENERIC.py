@@ -30,7 +30,7 @@ from flagtensor.runtime import is_ascend as _is_ascend
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 from flagtensor.runtime import persistent_grid_from_meta
 from flagtensor.utils import libtuner
-from flagtensor.utils.direct_launch import execution_key as _execution_key
+from flagtensor.utils.libtuner import execution_key as _execution_key
 
 
 # On Ascend the conventional "one program per tile" launch creates thousands
@@ -359,7 +359,7 @@ class _TritonBinaryExecutor:
             raise ValueError(f"unsupported binary operator: {op}")
         self.layout_cache = {}
         # Cached direct launchers, one per (dtype, size, alignment) triple;
-        # see flagtensor.utils.direct_launch for why this matters on
+        # see flagtensor.utils.libtuner for why this matters on
         # backends where Python-side launch overhead dominates.
         self._launchers = {}
 

@@ -22,9 +22,11 @@ import triton.language as tl
 from flagtensor import runtime
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
 from flagtensor.runtime import persistent_grid_from_meta
-from flagtensor.utils.direct_launch import execution_key as _execution_key
-from flagtensor.utils.direct_launch import stream_fns as _stream_fns
-from flagtensor.utils.libtuner import libtuner
+from flagtensor.utils.libtuner import (
+    execution_key as _execution_key,
+    libtuner,
+    stream_fns as _stream_fns,
+)
 
 
 # ---------------------------------------------------------------------------
