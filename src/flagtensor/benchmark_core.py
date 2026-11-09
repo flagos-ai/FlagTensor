@@ -368,7 +368,8 @@ class Benchmark:
         and fall through to Triton-only timing.
 
         """
-        if CUTENSOR_AVAILABLE:
+        from flagtensor.runtime import device as _active_device
+        if CUTENSOR_AVAILABLE and _active_device.vendor_name != "ppu":
             return importlib.import_module("flagtensor.cutensor")
         try:
             mod = importlib.import_module("flagtensor.torch_npu_baseline")

@@ -36,6 +36,9 @@ def get_tune_config(vendor_name=None, file_mode='r', file_path=None):
             script_path = os.path.abspath(__file__)
             base_dir = os.path.dirname(script_path)
             file_path = os.path.join(base_dir, vendor_name, 'tune_configs.yaml')
+            # PPU uses the shared NVIDIA tuning table when it has no own table.
+            if vendor_name == '_ppu' and not os.path.isfile(file_path):
+                file_path = os.path.join(base_dir, '_nvidia', 'tune_configs.yaml')
         else:
             file_path = os.path.join(file_path, 'tune_configs.yaml')
         with open(file_path, file_mode) as file:

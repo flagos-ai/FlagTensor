@@ -91,10 +91,6 @@ class DeviceDetector:
     # Layer 1: environment variables
     # ------------------------------------------------------------------
     def _get_vendor_from_env(self):
-        # PPU_SDK → thead (T-Head XuanTie)
-        if "PPU_SDK" in os.environ:
-            return "thead"
-
         env_keys = (
             "GEMS_VENDOR",
             "FLAGGEMS_VENDOR",
@@ -104,6 +100,9 @@ class DeviceDetector:
         for key in env_keys:
             if key in os.environ:
                 return str(os.environ.get(key).lower())
+
+        if "PPU_SDK" in os.environ:
+            return "ppu"
 
         return False
 
