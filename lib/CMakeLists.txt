@@ -14,7 +14,8 @@ target_include_directories(operators
 target_link_libraries(operators
   PUBLIC Torch::Torch
   PRIVATE TritonJIT::triton_jit
-  PRIVATE CUDA::cudart CUDA::cuda_driver)
+  # Only cuda.h types are used (CUstream): headers, no runtime/driver library.
+  PRIVATE CUDA::toolkit)
 
 target_compile_definitions(operators PRIVATE BACKEND_${FLAGTENSOR_BACKEND})
 
