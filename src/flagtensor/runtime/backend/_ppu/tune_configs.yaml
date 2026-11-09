@@ -1,0 +1,1028 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+elementwise_unary:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 2
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+
+elementwise_binary:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 2
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+
+elementwise_trinary:
+  - gen: true
+    param_map:
+      META:
+        KERNEL_ID: kernel_id
+      num_warps: warps
+      num_stages: stages
+    kernel_id:
+      - 0
+      - 1
+    warps:
+      - 2
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+
+CUTENSOR_OP_ADD:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_MUL:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_MAX:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_MIN:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_IDENTITY:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_SQRT:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_RELU:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_CONJ:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_RCP:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_SIGMOID:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_TANH:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_ABS:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_EXP:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_LOG:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_NEG:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_SIN:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_COS:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_TAN:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_SINH:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_COSH:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_ASIN:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_ACOS:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_ATAN:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_ASINH:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_ACOSH:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_ATANH:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_CEIL:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_FLOOR:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_MISH:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_SWISH:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_SOFT_PLUS:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+
+CUTENSOR_OP_SOFT_SIGN:
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 2
+  - META:
+      BLOCK_SIZE: 256
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 1
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8

@@ -464,3 +464,14 @@ benchmark test 文件用 `get_baseline_class(OP_NAME)` 加载即可，无需关�
   - `docs/acceptance/benchmark_policy.md`：benchmark 容差策略
   - `docs/acceptance/accuracy_policy.md`：accuracy 容差策略
   - `conf/operators.yaml`：算子注册表（36 个算子）
+
+### 基线检测与验收环境
+
+设置 `PPU_SDK` 时，设备检测会选择 `ppu`；如果设置了 `GEMS_VENDOR` 等显式 vendor 变量，则以显式设置为准，请避免在 PPU 容器中遗留 `GEMS_VENDOR=nvidia`。性能基线为 PPU 上的 PyTorch 原生算子，不能与 NVIDIA 的 cuTensor 基线混为一谈。可在验收环境中检查：
+
+```bash
+python -c "from flagtensor.runtime import device; from flagtensor.benchmark_core import vendor_baseline_available; print(device.vendor_name, vendor_baseline_available())"
+python tools/run_tests.py --stages all --gpus 0 --dump-output --output-dir logs_results
+```
+
+NVIDIA 环境需要安装兼容的 cuTensor（例如 `pip install cutensor-cu12==2.6.0`）及其运行时依赖。程序会查找 pip 包内的版本化动态库；启动测试的 Python 环境必须同时安装 pytest。性能结果中的 `Skipped: Vendor baseline unavailable` 表示基线未能加载，并不代表性能达标。

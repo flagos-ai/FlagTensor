@@ -246,7 +246,7 @@ class Benchmark:
         # On non-NVIDIA backends we fall back to a vendor-native baseline
         # (torch_npu-aten on Ascend). ``baseline_available`` is the
         # vendor-neutral flag the run() loop checks against.
-        self.baseline_available = CUTENSOR_AVAILABLE or self._baseline_module() is not None
+        self.baseline_available = self._baseline_module() is not None
         self._auto_kernel_cache = {}
 
     def get_input_iter(self, dtype: torch.dtype) -> Generator:
@@ -368,7 +368,8 @@ class Benchmark:
         and fall through to Triton-only timing.
 
         """
-        if CUTENSOR_AVAILABLE:
+        from flagtensor.runtime import device as _active_device
+        if _active_device.vendor_name == "nvidia" and CUTENSOR_AVAILABLE:
             return importlib.import_module("flagtensor.cutensor")
         try:
             mod = importlib.import_module("flagtensor.torch_npu_baseline")

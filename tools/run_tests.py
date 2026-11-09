@@ -679,7 +679,7 @@ def run_accuracy_q(gpu_id, op):
     op_dir = CFG.output_dir / op
     ensure_dir(op_dir)
 
-    cmd = f'pytest {test_file} -m "{op}" --record json --output {result_file} --ref cpu -vs'
+    cmd = f'{shlex.quote(sys.executable)} -m pytest {shlex.quote(str(test_file))} -m {shlex.quote(op)} --record json --output {shlex.quote(str(result_file))} --ref cpu -vs'
 
     dur = time.time()
     code = run_cmd(op, cmd, cwd=accuracy_dir, env=env, flavor="accuracy")
@@ -728,7 +728,7 @@ def run_benchmark_q(gpu_id, op):
     ensure_dir(op_dir)
 
     dur = time.time()
-    cmd = f'pytest {bench_file} -m "{op}" --level core --record json --output {result_file}'
+    cmd = f'{shlex.quote(sys.executable)} -m pytest {shlex.quote(str(bench_file))} -m {shlex.quote(op)} --level core --record json --output {shlex.quote(str(result_file))}'
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
