@@ -93,6 +93,14 @@ CUTENSOR_OP_ADD:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_MUL:
   - META:
@@ -121,6 +129,14 @@ CUTENSOR_OP_MUL:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -153,6 +169,14 @@ CUTENSOR_OP_MAX:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_MIN:
   - META:
@@ -181,6 +205,14 @@ CUTENSOR_OP_MIN:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -213,6 +245,14 @@ CUTENSOR_OP_IDENTITY:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_SQRT:
   - META:
@@ -241,6 +281,14 @@ CUTENSOR_OP_SQRT:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -273,6 +321,14 @@ CUTENSOR_OP_RELU:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_CONJ:
   - META:
@@ -301,6 +357,14 @@ CUTENSOR_OP_CONJ:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -333,6 +397,14 @@ CUTENSOR_OP_RCP:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_SIGMOID:
   - META:
@@ -361,6 +433,14 @@ CUTENSOR_OP_SIGMOID:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -393,6 +473,14 @@ CUTENSOR_OP_TANH:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_ABS:
   - META:
@@ -421,6 +509,14 @@ CUTENSOR_OP_ABS:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -453,6 +549,14 @@ CUTENSOR_OP_EXP:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_LOG:
   - META:
@@ -481,6 +585,14 @@ CUTENSOR_OP_LOG:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -513,6 +625,14 @@ CUTENSOR_OP_NEG:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_SIN:
   - META:
@@ -541,6 +661,14 @@ CUTENSOR_OP_SIN:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -573,6 +701,14 @@ CUTENSOR_OP_COS:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_TAN:
   - META:
@@ -601,6 +737,14 @@ CUTENSOR_OP_TAN:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -633,6 +777,14 @@ CUTENSOR_OP_SINH:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_COSH:
   - META:
@@ -661,6 +813,14 @@ CUTENSOR_OP_COSH:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -693,6 +853,14 @@ CUTENSOR_OP_ASIN:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_ACOS:
   - META:
@@ -721,6 +889,14 @@ CUTENSOR_OP_ACOS:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -753,6 +929,14 @@ CUTENSOR_OP_ATAN:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_ASINH:
   - META:
@@ -781,6 +965,14 @@ CUTENSOR_OP_ASINH:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -813,6 +1005,14 @@ CUTENSOR_OP_ACOSH:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_ATANH:
   - META:
@@ -841,6 +1041,14 @@ CUTENSOR_OP_ATANH:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -873,6 +1081,14 @@ CUTENSOR_OP_CEIL:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_FLOOR:
   - META:
@@ -901,6 +1117,14 @@ CUTENSOR_OP_FLOOR:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -933,6 +1157,14 @@ CUTENSOR_OP_MISH:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_SWISH:
   - META:
@@ -961,6 +1193,14 @@ CUTENSOR_OP_SWISH:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
 
@@ -993,6 +1233,14 @@ CUTENSOR_OP_SOFT_PLUS:
       BLOCK_SIZE: 1024
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
 
 CUTENSOR_OP_SOFT_SIGN:
   - META:
@@ -1021,5 +1269,13 @@ CUTENSOR_OP_SOFT_SIGN:
     num_warps: 8
   - META:
       BLOCK_SIZE: 1024
+      BLOCKS_PER_PROGRAM: 4
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+      BLOCKS_PER_PROGRAM: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
       BLOCKS_PER_PROGRAM: 4
     num_warps: 8

@@ -69,7 +69,7 @@ class AtanhBenchmark(Benchmark):
         return atanh(x)
 
     def reference_impl(self, x):
-        return torch.atanh(x)
+        return torch.atanh(x.float()).to(x.dtype)
 
 
 @pytest.mark.performance

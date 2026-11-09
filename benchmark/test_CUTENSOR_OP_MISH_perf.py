@@ -70,7 +70,9 @@ class MishBenchmark(Benchmark):
         return mish(x)
 
     def reference_impl(self, x):
-        return F.mish(x)
+        # ``torch_xmlir`` has no ``F.mish`` kernel; express the same math
+        # (mish(x) = x * tanh(softplus(x))) with the ops it does implement.
+        return x * torch.tanh(F.softplus(x))
 
 
 @pytest.mark.performance

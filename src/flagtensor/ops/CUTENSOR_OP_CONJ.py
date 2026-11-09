@@ -30,7 +30,7 @@ def _build_conj_kernel():
         warmup=5,
         rep=10,
     )
-    @triton.heuristics(runtime.get_heuristic_config("elementwise_unary"))
+    @triton.heuristics(runtime.get_heuristic_config("elementwise_conj"))
     @triton.jit
     def _conj_kernel(
         x_ptr,
@@ -40,23 +40,27 @@ def _build_conj_kernel():
         BLOCKS_PER_PROGRAM: tl.constexpr,
         KERNEL_ID: tl.constexpr,
     ):
+        # Work on the *flat* interleaved real/imag buffer: a stride-2 access
+        # pattern (``2*offset`` / ``2*offset + 1``) is dramatically slower than a
+        # contiguous one on XPU, so load a contiguous run of 2*BLOCK floats and
+        # negate the odd (imaginary) lanes.
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE * BLOCKS_PER_PROGRAM
+        n_lanes = n_elements * 2
         if KERNEL_ID == 0:
-            offsets = block_start + tl.arange(0, BLOCK_SIZE * BLOCKS_PER_PROGRAM)
-            mask = offsets < n_elements
-            real = tl.load(x_ptr + 2 * offsets, mask=mask)
-            imag = tl.load(x_ptr + 2 * offsets + 1, mask=mask)
-            tl.store(y_ptr + 2 * offsets, real, mask=mask)
-            tl.store(y_ptr + 2 * offsets + 1, -imag, mask=mask)
+            offsets = 2 * block_start + tl.arange(0, 2 * BLOCK_SIZE * BLOCKS_PER_PROGRAM)
+            mask = offsets < n_lanes
+            value = tl.load(x_ptr + offsets, mask=mask)
+            y = tl.where((offsets % 2) == 0, value, -value)
+            tl.store(y_ptr + offsets, y, mask=mask)
         else:
             for block_idx in tl.static_range(0, BLOCKS_PER_PROGRAM):
-                offsets = block_start + block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-                mask = offsets < n_elements
-                real = tl.load(x_ptr + 2 * offsets, mask=mask)
-                imag = tl.load(x_ptr + 2 * offsets + 1, mask=mask)
-                tl.store(y_ptr + 2 * offsets, real, mask=mask)
-                tl.store(y_ptr + 2 * offsets + 1, 0 - imag, mask=mask)
+                base = 2 * (block_start + block_idx * BLOCK_SIZE)
+                offsets = base + tl.arange(0, 2 * BLOCK_SIZE)
+                mask = offsets < n_lanes
+                value = tl.load(x_ptr + offsets, mask=mask)
+                y = tl.where((offsets % 2) == 0, value, -value)
+                tl.store(y_ptr + offsets, y, mask=mask)
 
     return _conj_kernel
 
@@ -65,9 +69,8 @@ def _build_conj_kernel():
 # conjugate bit; no kernel runs), which is also the documented PyTorch
 # semantics.  Materialising the result costs a full read+write of the tensor
 # and can therefore never be competitive, so the Ascend path returns the view
-# as well and exposes no kernel: the 2-byte-interleaved triton kernel does not
-# even compile there (triton-ascend's interleave pass asserts on the strided
-# ``2 * offsets`` access) and fp64 is unsupported.
+# as well and builds no kernel (fp64, which complex128 would need, is
+# unsupported there too).
 if _is_ascend():
     _conj_kernel = None
 else:

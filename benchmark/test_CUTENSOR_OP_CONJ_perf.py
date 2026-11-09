@@ -46,23 +46,39 @@ def x_real_dtype(dtype):
     return torch.float32 if dtype == torch.complex64 else torch.float64
 
 
+def _supported_complex_dtypes(dtypes):
+    """Keep only dtypes this backend really allocates.
+
+    ``torch_xmlir`` rejects complex arithmetic (``real + 1j * imag`` raises
+    ``NOT IMPLEMENTED``) and silently downcasts ``complex128`` to
+    ``complex64``; probing the allocated dtype keeps the benchmark honest
+    instead of recording the same measurement twice.
+    """
+    kept = []
+    for dtype in dtypes:
+        try:
+            probe = torch.empty((2,), device=_device_str, dtype=dtype)
+            if probe.dtype == dtype:
+                kept.append(dtype)
+        except Exception:
+            pass
+    return tuple(kept)
+
+
 class ConjBenchmark(Benchmark):
     def __init__(self):
         super().__init__(
             op_name=OP_NAME,
             config=BenchmarkConfig(
-                dtypes=tuple(DEFAULT_CONJ_BENCHMARK_DTYPES),
+                dtypes=_supported_complex_dtypes(DEFAULT_CONJ_BENCHMARK_DTYPES),
                 shapes=tuple(DEFAULT_CONJ_BENCHMARK_SHAPES),
             ),
         )
         self.baselines = {}
 
     def get_input_iter(self, dtype: torch.dtype):
-        real_dtype = x_real_dtype(dtype)
         for shape in self.config.shapes:
-            real = torch.randn(shape, device=self.device, dtype=real_dtype)
-            imag = torch.randn(shape, device=self.device, dtype=real_dtype)
-            yield ((real + 1j * imag).to(dtype),)
+            yield (torch.randn(shape, device=self.device, dtype=dtype),)
 
     def baseline_impl(self, x):
         baseline = self.baselines.get(x.dtype)
@@ -76,7 +92,22 @@ class ConjBenchmark(Benchmark):
         return conj(x)
 
     def reference_impl(self, x):
-        return torch.conj(x)
+        # ``torch.conj`` is not implemented by torch_xmlir, and a strided
+        # in-place ``neg_`` on ``x.view(float)[..., 1]`` only updates the
+        # first lane there, so build the conjugated pair explicitly.
+        real_dtype = torch.float32 if x.dtype == torch.complex64 else torch.float64
+        rv = x.view(real_dtype).view(*x.shape, 2)
+        pair = torch.stack([rv[..., 0], -rv[..., 1]], dim=-1).contiguous()
+        return torch.view_as_complex(pair)
+
+    def verify(self, reference, test, dtype):
+        # ``torch.allclose`` has no complex kernel on torch_xmlir; comparing
+        # the interleaved real view is equivalent and uses the same
+        # tolerance policy as every other operator.
+        if reference.is_complex():
+            real_dtype = torch.float32 if reference.dtype == torch.complex64 else torch.float64
+            return super().verify(reference.view(real_dtype), test.view(real_dtype), real_dtype)
+        return super().verify(reference, test, dtype)
 
 
 @pytest.mark.performance
