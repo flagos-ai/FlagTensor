@@ -272,7 +272,7 @@ class Benchmark:
         from flagtensor.testing.assertions import get_tolerance as _get_tol
 
         atol, rtol = _get_tol(dtype)
-        
+
         # Relax tolerance for benchmark comparison because different
         # GPU/device architectures may have different rounding and
         # accumulation behavior.
@@ -377,7 +377,7 @@ class Benchmark:
                 return mod
         except Exception:
             pass
-        
+
                 # Resolve vendor-native baseline modules through either supported
         # backend mechanism:
         #
@@ -446,7 +446,7 @@ class Benchmark:
             pass
 
         return None
-        
+
 
     def _get_baseline_instance(self, dtype: torch.dtype):
         baselines = self._get_baseline_store()

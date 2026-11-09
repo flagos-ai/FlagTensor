@@ -30,7 +30,7 @@ try:
 except ImportError:
     _TORCH_NPU_AVAILABLE = lambda: False
 
-    
+
 # A trinary baseline is available on NVIDIA (cuTensor), Ascend
 # (torch_npu-aten / CANN aclnn), vendors exposing a trinary executor
 # through BASELINE_MODULE_NAME (e.g. MetaX), or vendor backends that
