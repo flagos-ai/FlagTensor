@@ -26,11 +26,10 @@ from flagtensor.ops.elementwise_common import (
     allocate_output_tensor,
 )
 
-from flagtensor.runtime import is_ascend as _is_ascend
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
-from flagtensor.runtime import persistent_grid_from_meta
 from flagtensor.utils import libtuner
-from flagtensor.utils.direct_launch import execution_key as _execution_key
+from flagtensor.runtime import is_ascend as _is_ascend
+from flagtensor.runtime import persistent_grid_from_meta
 
 
 # On Ascend the conventional "one program per tile" launch creates thousands
@@ -359,36 +358,6 @@ class _TritonBinaryExecutor:
         if not _supports_triton_binary(self.op_code):
             raise ValueError(f"unsupported binary operator: {op}")
         self.layout_cache = {}
-        # Cached direct launchers, one per (dtype, size, alignment) triple;
-        # see flagtensor.utils.direct_launch for why this matters on
-        # backends where Python-side launch overhead dominates.
-        self._launchers = {}
-
-    def _launch_direct(self, x, y, output):
-        n_elements = output.numel()
-        plan_key = (
-            x.dtype,
-            n_elements,
-            x.data_ptr() & 15,
-            y.data_ptr() & 15,
-            output.data_ptr() & 15,
-            _execution_key(x.get_device()),
-        )
-        launcher = self._launchers.get(plan_key)
-        if launcher is not None:
-            launcher(x, y, output, n_elements)
-            return output
-
-        result = _launch_contiguous_binary(x, y, output, self.op_code)
-        kernel = (
-            _binary_generic_persistent_kernel if _IS_ASCEND else _binary_generic_kernel
-        )
-        launcher = getattr(kernel, "last_launcher", None)
-        if launcher is not None:
-            if len(self._launchers) >= 1024:
-                self._launchers.clear()
-            self._launchers[plan_key] = launcher
-        return result
 
     def _layout_key(self, x, y, mode_x, mode_y, mode_out):
         return (
@@ -447,7 +416,7 @@ class _TritonBinaryExecutor:
 
         output = allocate_output_tensor(plan["output_shape"], out=out, device=x.device, dtype=x.dtype)
         if plan["kind"] == "direct":
-            return self._launch_direct(x, y, output)
+            return _launch_contiguous_binary(x, y, output, self.op_code)
         if plan["kind"] == "indexed":
             padded_shape = plan["padded_shape"]
             x_axes, x_strides, x_shapes = plan["x_meta"]
@@ -498,7 +467,7 @@ class _TritonBinaryExecutor:
             plan["output_modes"],
             plan["output_shape"],
         )
-        return self._launch_direct(aligned[0], aligned[1], output)
+        return _launch_contiguous_binary(aligned[0], aligned[1], output, self.op_code)
 
 
 def _get_triton_binary_executor(op):

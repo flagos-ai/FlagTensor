@@ -69,7 +69,7 @@ class AcoshBenchmark(Benchmark):
         return acosh(x)
 
     def reference_impl(self, x):
-        return torch.acosh(x.float()).to(x.dtype)
+        return torch.acosh(x)
 
 
 @pytest.mark.performance

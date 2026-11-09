@@ -69,7 +69,7 @@ class CoshBenchmark(Benchmark):
         return cosh(x)
 
     def reference_impl(self, x):
-        return torch.cosh(x.float()).to(x.dtype)
+        return torch.cosh(x)
 
 
 @pytest.mark.performance

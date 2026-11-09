@@ -18,7 +18,6 @@ import triton.language as tl
 
 from flagtensor.cutensor import _normalize_modes
 from flagtensor.runtime import is_on_accelerator as _is_on_accelerator
-from flagtensor.utils.libtuner import libtuner
 
 _GETT_PREPARED_LAUNCHER_CACHE = {}
 
@@ -37,25 +36,6 @@ def _is_iluvatar_vendor():
 
 
 _ILUVATAR = _is_iluvatar_vendor()
-
-
-def _is_kunlunxin_vendor():
-    """True when the active vendor backend is Kunlunxin XPU."""
-    try:
-        from flagtensor import runtime as _rt
-        return _rt.device.vendor_name == "kunlunxin"
-    except Exception:
-        return False
-
-
-_KUNLUNXIN = _is_kunlunxin_vendor()
-
-# Vendors whose Python launch path costs far more than the kernel itself.
-# On these the autotuner is driven through ``libtuner`` (host-loop timing,
-# because CUDA events read 0 there and break ``do_bench``) and the winning
-# config is frozen into a direct ``CompiledKernel`` runner.
-_DIRECT_LAUNCH_VENDORS = _ILUVATAR or _KUNLUNXIN
-
 
 _GETT_BASE_CONFIGS = [
     triton.Config({"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 32, "GROUP_M": 8}, num_warps=4, num_stages=3),
@@ -85,11 +65,9 @@ _GETT_ILUVATAR_EXTRA_CONFIGS = [
 ]
 
 
-@libtuner(
+@triton.autotune(
     configs=_GETT_BASE_CONFIGS + (_GETT_ILUVATAR_EXTRA_CONFIGS if _ILUVATAR else []),
     key=["M", "N", "K", "TRANS_A", "TRANS_B"],
-    warmup=5,
-    rep=10,
 )
 @triton.jit
 def _gett_kernel(
@@ -264,19 +242,19 @@ def _make_prepared_gett_launcher(a, b, c, out, *, trans_a=False, trans_b=False):
         )
         return out_tensor
 
-    if not _DIRECT_LAUNCH_VENDORS:
+    if not _ILUVATAR:
         return _launch
 
-    # Iluvatar / Kunlunxin: JITFunction.run dispatch costs ~0.15 ms per call
-    # (vs ~0.01 ms of GPU time for these GEMM sizes), which dominates
-    # host-timed call paths. After the first call (which drives the standard
-    # autotuner so the best config is settled), the chosen config is frozen
-    # into a direct CompiledKernel runner (~0.012 ms per call, same kernel
-    # launch semantics — CUDA-graph replay was measured to cost ~0.06 ms
-    # GPU-side on this stack, so it is not used). Runners are keyed by
-    # pointer 16B-alignment because the compiled kernel is specialised on
-    # it. Any failure during freezing permanently falls back to the plain
-    # autotuner path.
+    # Iluvatar: JITFunction.run dispatch costs ~0.15 ms per call on the
+    # CoreX Triton fork (vs ~0.01 ms of GPU time for these GEMM sizes),
+    # which dominates host-timed call paths. After the first call (which
+    # drives the standard autotuner so the best config is settled), the
+    # chosen config is frozen into a direct CompiledKernel runner
+    # (~0.012 ms per call, same kernel launch semantics — CUDA-graph
+    # replay was measured to cost ~0.06 ms GPU-side on this stack, so it
+    # is not used). Runners are keyed by pointer 16B-alignment because
+    # the compiled kernel is specialised on it. Any failure during
+    # freezing permanently falls back to the plain autotuner path.
     state = {"frozen": {}, "failures": 0}
 
     def _run(a_tensor, b_tensor, c_tensor, out_tensor, alpha, beta):

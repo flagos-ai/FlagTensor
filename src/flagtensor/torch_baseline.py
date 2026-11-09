@@ -202,42 +202,10 @@ def _binary_apply(op, x, y):
     raise ValueError(f"unsupported binary op: {op}")
 
 
-# Per-(torch function, dtype) support cache used by ``_unary_apply``.
-_UNARY_DTYPE_SUPPORT = {}
-
-
-def _unary_supports_dtype(fn, x):
-    """Return whether ``fn`` accepts ``x.dtype`` on this backend.
-
-    Several vendor PyTorch builds (e.g. Kunlunxin P800's xdnn wrappers)
-    implement ``sinh``/``cosh``/``acosh``/``asinh`` only for float16 and
-    float32 and raise ``NOT IMPLEMENTED`` for bfloat16.  Probe once per
-    (function, dtype) pair so the timed path never pays for the failed
-    call; unsupported combinations are evaluated in float32 and cast back,
-    which is the same workaround PyTorch itself uses for ATen ops without
-    a bfloat16 kernel.
-    """
-    key = (id(fn), x.dtype)
-    supported = _UNARY_DTYPE_SUPPORT.get(key)
-    if supported is None:
-        try:
-            probe = x[:1] if x.numel() else torch.ones(
-                1, device=x.device, dtype=x.dtype
-            )
-            fn(probe)
-            supported = True
-        except (RuntimeError, TypeError):
-            supported = False
-        _UNARY_DTYPE_SUPPORT[key] = supported
-    return supported
-
-
 def _unary_apply(op, x):
     fn = _UNARY_TORCH_FN.get(op)
     if fn is None:
         raise ValueError(f"unsupported unary op: {op}")
-    if not _unary_supports_dtype(fn, x):
-        return fn(x.float()).to(x.dtype)
     return fn(x)
 
 

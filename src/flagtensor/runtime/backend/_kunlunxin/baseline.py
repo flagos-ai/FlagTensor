@@ -174,14 +174,13 @@ class BaselineConj(_UnsupportedUnaryBaseline):
         super().__init__(op=CUTENSOR_OP_CONJ, dtype=dtype)
     def _compute(self, x):
         if x.dtype == torch.complex64:
-            # ``x.view(torch.float32)`` is a *flat* 1-D view of interleaved
-            # real/imag lanes, and torch_xmlir's strided in-place ``neg_``
-            # only updates the first lane, so assemble a contiguous
-            # (..., 2) pair instead and re-view it as complex.
             real_dtype = torch.float32
-            rv = x.view(real_dtype).view(*x.shape, 2)
-            pair = torch.stack([rv[..., 0], -rv[..., 1]], dim=-1).contiguous()
-            return torch.view_as_complex(pair)
+            x_view = x.view(real_dtype)
+            y = torch.empty_like(x)
+            y_view = y.view(real_dtype)
+            y_view.copy_(x_view)
+            y_view[..., 1].neg_()
+            return y
         return x.clone()
 
 

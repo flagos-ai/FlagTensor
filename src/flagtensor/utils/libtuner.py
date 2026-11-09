@@ -29,14 +29,6 @@ import triton
 logger = logging.getLogger(__name__)
 
 from flagtensor.runtime import device, torch_device_fn
-from flagtensor.utils.direct_launch import (
-    build_launcher as _build_direct_launcher,
-    constexpr_key as _constexpr_key,
-    execution_key as _execution_key,
-    fast_launch_enabled,
-    specialization_key as _specialization_key,
-    stream_fns as _stream_fns,
-)
 
 
 def _config_cache_dir() -> Path:
@@ -305,24 +297,6 @@ class LibTuner(triton.runtime.Autotuner):
         self.config_table_name = f"{self.__name__}_{self.kernel_hash}"
         self.benchmark_table_name = f"{self.__name__}_{self.cache_key}_benchmark"
         self.cache = libcache[self.config_table_name]
-        # Direct-launch fast path (see flagtensor.utils.direct_launch):
-        # on non-NVIDIA backends Triton's Python launch path costs far more
-        # than the device kernel for pointwise operators, so once a kernel
-        # has been compiled we call the C-level launcher directly.
-        self._fast_launchers: Dict[Any, Any] = {}
-        self._fast_enabled = fast_launch_enabled()
-        self._resolved_configs: Dict[Any, triton.Config] = {}
-        self._config_kwargs_cache: Dict[int, Dict[str, Any]] = {}
-        #: Launcher registered by the most recent :meth:`run` call (used by
-        #: the operator executors to skip the dispatch layer on later calls).
-        self.last_launcher = None
-        #: C-level ``get_current_stream`` of the active driver, bound once:
-        #: the fast path resolves the stream on every launch to notice a
-        #: stream switch, so it must not pay for the lookup as well.
-        try:
-            self._get_stream = _stream_fns()[1]
-        except Exception:  # pragma: no cover - driver not ready yet
-            self._get_stream = lambda _device=None: _execution_key(_device)[1]
 
     def _bench(self, *args, config, **meta):
         """Override Autotuner._bench to use host-loop timing on non-NVIDIA backends.
@@ -496,54 +470,37 @@ class LibTuner(triton.runtime.Autotuner):
         return decorator
 
     def run(self, *args, **kwargs):
-        self.last_launcher = None
-        launchers = self._fast_launchers
-        if launchers and self._fast_enabled and not kwargs.get("warmup"):
-            # Reconstruct exactly the launch Triton would emit (same
-            # specialization, same constexprs, same stream) and reuse the
-            # frozen C-level launcher.  This runs on every operator call, so
-            # everything here is deliberately allocation-light.
-            try:
-                launcher = launchers.get(
-                    (_constexpr_key(kwargs) if kwargs else (),
-                     _specialization_key(args),
-                     self._get_stream(args[0].get_device()))
-                )
-            except Exception:
-                launcher = None
-            if launcher is not None:
-                return launcher(*args)
-        fast_key = self._fast_key(args, kwargs)
-
         self.nargs = dict(zip(self.arg_names, args))
         used_cached_result = True
         if len(self.configs) > 1:
             all_args = {**self.nargs, **kwargs}
             _args = {k: v for k, v in all_args.items() if k in self.arg_names}
             key = self.get_key(_args)
-            config = self._resolved_configs.get(key)
-            if config is None:
-                used_cached_result = key in self.cache
-                if not used_cached_result:
-                    benchmark_cache = libcache[self.benchmark_table_name, key]
-                    pruned_configs = self.prune_configs(kwargs)
-                    bench_start = time.time()
+            if key not in self.cache:
+                used_cached_result = False
+                benchmark_cache = libcache[self.benchmark_table_name, key]
+                pruned_configs = self.prune_configs(kwargs)
+                bench_start = time.time()
 
-                    def bench(config: triton.Config) -> List[float]:
-                        ret = benchmark_cache.get(config)
-                        if ret is None:
-                            ret = tuple(self._bench(*args, config=config, **kwargs))
-                            benchmark_cache[config] = ret
-                        return list(ret)
+                def bench(config: triton.Config) -> List[float]:
+                    ret = benchmark_cache.get(config)
+                    if ret is None:
+                        ret = tuple(self._bench(*args, config=config, **kwargs))
+                        benchmark_cache[config] = ret
+                    return list(ret)
 
-                    best_config, timings = self.policy(bench, pruned_configs, args, kwargs)
-                    self.bench_time = time.time() - bench_start
-                    self.cache[key] = best_config
-                    full_nargs = {**self.nargs, **kwargs, **_config_all_kwargs(best_config)}
-                    self.pre_hook(full_nargs, reset_only=True)
-                    self.configs_timings = timings
-                config = self._match_original_config(self.cache[key])
-                self._resolved_configs[key] = config
+                best_config, timings = self.policy(bench, pruned_configs, args, kwargs)
+                self.bench_time = time.time() - bench_start
+                self.cache[key] = best_config
+                full_nargs = {**self.nargs, **kwargs, **_config_all_kwargs(best_config)}
+                self.pre_hook(full_nargs, reset_only=True)
+                self.configs_timings = timings
+            config = self.cache[key]
+            cached_kwargs = _config_all_kwargs(config)
+            for original_config in self.configs:
+                if _config_all_kwargs(original_config) == cached_kwargs:
+                    config = original_config
+                    break
         else:
             config = self.configs[0]
         self.best_config = config
@@ -554,62 +511,12 @@ class LibTuner(triton.runtime.Autotuner):
                 self.bench_time,
                 self.best_config,
             )
-        config_kwargs = self._config_kwargs(config)
         if config.pre_hook is not None:
-            full_nargs = {**self.nargs, **kwargs, **config_kwargs}
+            full_nargs = {**self.nargs, **kwargs, **_config_all_kwargs(config)}
             config.pre_hook(full_nargs)
-        ret = self.fn.run(*args, **kwargs, **config_kwargs)
+        ret = self.fn.run(*args, **kwargs, **_config_all_kwargs(config))
         self.nargs = None
-        if fast_key is not None and config.pre_hook is None:
-            self._register_fast_launcher(fast_key, args, kwargs, config_kwargs, ret)
         return ret
-
-    def _match_original_config(self, config: triton.Config) -> triton.Config:
-        """Map a config deserialized from the on-disk cache back onto the
-        equal (but distinct) instance from ``self.configs``."""
-        cached_kwargs = _config_all_kwargs(config)
-        for original_config in self.configs:
-            if _config_all_kwargs(original_config) == cached_kwargs:
-                return original_config
-        return config
-
-    def _config_kwargs(self, config: triton.Config) -> Dict[str, Any]:
-        """``_config_all_kwargs`` memoized per config object (configs are
-        module-level singletons, so ``id()`` is stable)."""
-        key = id(config)
-        cached = self._config_kwargs_cache.get(key)
-        if cached is None:
-            cached = _config_all_kwargs(config)
-            self._config_kwargs_cache[key] = cached
-        return cached
-
-    def _fast_key(self, args, kwargs):
-        """Key identifying a frozen launch, or ``None`` when unsupported."""
-        if not self._fast_enabled or kwargs.get("warmup"):
-            return None
-        try:
-            return (
-                _constexpr_key(kwargs) if kwargs else (),
-                _specialization_key(args),
-                self._get_stream(args[0].get_device()),
-            )
-        except Exception:
-            return None
-
-    def _register_fast_launcher(self, fast_key, args, kwargs, config_kwargs, ret):
-        if len(self._fast_launchers) >= 1024:
-            self._fast_launchers.clear()
-        try:
-            launcher = None if ret is None else _build_direct_launcher(
-                self, args, kwargs, config_kwargs, ret,
-                stream=fast_key[2] if len(fast_key) > 2 else None,
-            )
-        except Exception:
-            # Never let the optional fast path break a launch.
-            launcher = None
-        if launcher is not None:
-            self._fast_launchers[fast_key] = launcher
-            self.last_launcher = launcher
 
 
 @LibTuner.register_strategy(None)

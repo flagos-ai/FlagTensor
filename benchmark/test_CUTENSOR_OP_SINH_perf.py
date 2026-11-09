@@ -69,7 +69,7 @@ class SinhBenchmark(Benchmark):
         return sinh(x)
 
     def reference_impl(self, x):
-        return torch.sinh(x.float()).to(x.dtype)
+        return torch.sinh(x)
 
 
 @pytest.mark.performance

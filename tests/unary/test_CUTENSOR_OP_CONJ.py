@@ -32,6 +32,6 @@ def test_conj_correctness(shape, dtype):
         pytest.skip("Accelerator unavailable")
     x = torch.randn(shape, device=_device_str, dtype=dtype)
     ref = to_reference(x, upcast=(dtype in (torch.float16, torch.float32, torch.bfloat16)))
-    ref_out = torch.conj(ref)
+    ref_out = torch.conj(x)
     y = conj(x)
     gems_assert_equal(y, ref_out)
