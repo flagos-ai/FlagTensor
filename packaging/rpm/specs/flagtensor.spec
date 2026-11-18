@@ -2,11 +2,11 @@
 
 # PyTorch and CUDA are supplied by the NVIDIA runtime rather than RPMs.
 # Keep automatic requirements for distro libraries, Python, and TritonJIT.
-%global __requires_exclude ^([(]python3([.][0-9]+)?dist[(](torch|triton)[)] .*[)]|python3([.][0-9]+)?dist[(](matplotlib|openpyxl|pyyaml)[)] .*|(libcuda[.]so[.]1|libtorch(_cpu|_cuda|_python)?[.]so|libc10(_cuda)?[.]so)[(][)][(]64bit[)])$
+%global __requires_exclude ^([(]python3([.][0-9]+)?dist[(](torch|triton)[)] .*[)]|python3([.][0-9]+)?dist[(](torch|triton|matplotlib|openpyxl|pyyaml)[)] .*|(libcuda[.]so[.]1|libtorch(_cpu|_cuda|_python)?[.]so|libc10(_cuda)?[.]so)[(][)][(]64bit[)])$
 
 Name:           libflagtensor-nvidia
 Version:        0.3.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        FlagTensor C++ operator runtime (NVIDIA backend)
 
 License:        Apache-2.0
@@ -16,7 +16,11 @@ Source0:        flagtensor-%{version}.tar.gz
 BuildRequires:  cmake >= 3.25
 BuildRequires:  gcc-c++
 BuildRequires:  libtriton-jit-nvidia-devel >= 0.1.0-3
+%if 0%{?openEuler}
+BuildRequires:  python3-ninja
+%else
 BuildRequires:  ninja-build
+%endif
 BuildRequires:  patchelf
 BuildRequires:  python3-devel
 BuildRequires:  python3-pip
@@ -42,7 +46,12 @@ Summary:        FlagTensor Python operators for FlagOS
 BuildArch:      noarch
 Requires:       python3
 Requires:       python3-matplotlib
+%if 0%{?openEuler}
+# XLSX export imports this on demand. The 24.03 repositories do not ship it.
+Recommends:     python3-openpyxl
+%else
 Requires:       python3-openpyxl
+%endif
 Requires:       python3-pyyaml
 Suggests:       python3-flagtensor-nvidia
 
@@ -65,8 +74,12 @@ Python bindings for the native NVIDIA FlagTensor operator runtime.
 PY3_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 export PYTHONPATH=/usr/local/lib/python${PY3_VER}/site-packages:/usr/local/lib64/python${PY3_VER}/site-packages:$(python3 -c "import site; print(':'.join(site.getsitepackages()))")
 export PATH=/usr/local/bin:$PATH
+# Keep distro hardening flags and omit unused direct CUDA runtime links.
+export LDFLAGS="${LDFLAGS:-%{build_ldflags}} -Wl,--as-needed"
 TORCH_CMAKE_PATH=$(python3 -c "import importlib.util, os; s=importlib.util.find_spec('torch'); print(os.path.join(os.path.dirname(s.origin), 'share', 'cmake'))")
-%cmake -GNinja \
+# Use portable CMake steps because openEuler 24.03 lacks cmake_build/install.
+%cmake -S . -B build-rpm -GNinja \
+    -DCMAKE_INSTALL_LIBDIR:PATH=%{_libdir} \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CUDA_FLAGS="-Xcompiler -fPIE" \
     -DFLAGTENSOR_BACKEND=CUDA \
@@ -76,7 +89,7 @@ TORCH_CMAKE_PATH=$(python3 -c "import importlib.util, os; s=importlib.util.find_
     -DFLAGTENSOR_USE_EXTERNAL_TRITON_JIT=ON \
     -DTorch_ROOT="${TORCH_CMAKE_PATH}" \
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON
-%cmake_build
+cmake --build build-rpm -- %{?_smp_mflags}
 
 mkdir -p dist-rpm
 python3 -m build --wheel --no-isolation \
@@ -87,7 +100,7 @@ wheel=$(find dist-rpm -name 'flagtensor-*.whl' -print -quit)
 python3 -m pip install --no-deps --no-compile --no-index \
     --target %{buildroot}%{python3_sitelib} "$wheel"
 rm -f %{buildroot}%{python3_sitelib}/flagtensor-*.dist-info/RECORD
-%cmake_install
+DESTDIR=%{buildroot} cmake --install build-rpm
 find %{buildroot} -name '*.so*' -type f \
     -exec patchelf --remove-rpath {} \;
 
@@ -118,6 +131,9 @@ test -f %{buildroot}%{_libdir}/cmake/FlagTensor/FlagTensorConfig.cmake
 %{python3_sitelib}/flagtensor/c_operators*.so
 
 %changelog
+* Tue Nov 17 2026 FlagOS Contributors <contact@flagos.io> - 0.3.0-2
+- Support Fedora 43 and openEuler 24.03 with the matching TritonJIT build stack
+
 * Fri Sep 18 2026 FlagOS Contributors <contact@flagos.io> - 0.3.0-1
 - Align the packaging baseline with the 0.3.0 release line.
 
