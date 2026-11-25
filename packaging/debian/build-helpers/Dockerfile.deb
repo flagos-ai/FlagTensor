@@ -1,44 +1,50 @@
-ARG BASE_IMAGE=nvidia/cuda:12.8.0-devel-ubuntu22.04
+ARG BASE_IMAGE=nvidia/cuda:12.8.0-devel-ubuntu24.04
 FROM ${BASE_IMAGE}
 
-ARG PYTHON_VERSION=3.12
+# Empty = use the base Ubuntu release's system python3 (3.10 on 22.04, 3.12 on 24.04).
+ARG PYTHON_VERSION=
+ARG DEB_VERSION_SUFFIX=auto
 ARG TORCH_INDEX=https://resource.flagos.net/repository/flagos-pypi-nvidia/simple
 ARG TORCH_PACKAGES="torch==2.10.0+cu128 triton==3.6.0"
+ARG FLAGOS_APT=
+ARG FLAGOS_APT_KEY=https://resource.flagos.net/repository/apt-keys/pub/flagos-apt-public-key.asc
+
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential ca-certificates curl debhelper devscripts dh-python \
         dpkg-dev fakeroot git libfmt-dev ninja-build nlohmann-json3-dev \
-        patchelf software-properties-common \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-RUN if ! command -v python${PYTHON_VERSION} >/dev/null 2>&1; then \
-        (add-apt-repository -y ppa:deadsnakes/ppa \
-            || add-apt-repository -y ppa:deadsnakes/ppa) \
+        patchelf python3 python3-dev python3-pip python3-venv \
+        software-properties-common \
+    && if [ -n "${PYTHON_VERSION}" ] && ! python3 -c "import sys; raise SystemExit(0 if f'{sys.version_info.major}.{sys.version_info.minor}' == '${PYTHON_VERSION}' else 1)"; then \
+        (add-apt-repository -y ppa:deadsnakes/ppa || add-apt-repository -y ppa:deadsnakes/ppa) \
         && apt-get update && apt-get install -y --no-install-recommends \
-            python${PYTHON_VERSION} python${PYTHON_VERSION}-dev \
-            python${PYTHON_VERSION}-venv; \
+            python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-venv \
+        && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
+        && update-alternatives --install /usr/bin/python  python  /usr/bin/python${PYTHON_VERSION} 1 \
+        && curl -fsSL https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages; \
     fi \
-    && update-alternatives --install /usr/bin/python3 python3 \
-        /usr/bin/python${PYTHON_VERSION} 1 \
-    && update-alternatives --install /usr/bin/python python \
-        /usr/bin/python${PYTHON_VERSION} 1 \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir \
         "build" "cmake>=3.25,<4.0" "pybind11==3.0.3" \
-        "setuptools" "wheel" \
+        "setuptools>=64" "wheel" \
     && python3 -m pip install --no-cache-dir \
-        --index-url "${TORCH_INDEX}" ${TORCH_PACKAGES}
+        --index-url "${TORCH_INDEX}" \
+        --extra-index-url https://download.pytorch.org/whl/cu128 \
+        --extra-index-url https://pypi.org/simple \
+        ${TORCH_PACKAGES}
 
-# Local packages are used to validate a dependency PR before it is published.
-# Normal CI installs the same package from the FlagOS APT repository.
 COPY packaging/debian/local-deps/ /tmp/local-deps/
 RUN if ls /tmp/local-deps/libtriton-jit-nvidia*.deb >/dev/null 2>&1; then \
         apt-get update && apt-get install -y /tmp/local-deps/*.deb; \
     else \
-        echo "deb [trusted=yes] https://resource.flagos.net/repository/flagos-apt-hosted/ flagos-apt-hosted main" \
+        . /etc/os-release; \
+        apt_entry="${FLAGOS_APT:-https://resource.flagos.net/repository/flagos-apt-ubuntu${VERSION_ID} ${VERSION_CODENAME} main}"; \
+        install -d -m 0755 /etc/apt/keyrings; \
+        curl -fsSL "${FLAGOS_APT_KEY}" -o /etc/apt/keyrings/flagos.asc; \
+        echo "deb [signed-by=/etc/apt/keyrings/flagos.asc] ${apt_entry}" \
           > /etc/apt/sources.list.d/flagos.list; \
         apt-get update; \
         apt-get install -y libtriton-jit-nvidia-dev; \
@@ -48,7 +54,18 @@ RUN if ls /tmp/local-deps/libtriton-jit-nvidia*.deb >/dev/null 2>&1; then \
 COPY . /workspace/FlagTensor
 WORKDIR /workspace/FlagTensor
 
-RUN cp -r packaging/debian debian
+RUN cp -r packaging/debian debian && \
+    if [ "${DEB_VERSION_SUFFIX}" = "auto" ]; then \
+        . /etc/os-release && suffix="+${ID}${VERSION_ID}"; \
+    else suffix="${DEB_VERSION_SUFFIX}"; fi && \
+    if [ -n "${suffix}" ]; then \
+        base="$(dpkg-parsechangelog -l debian/changelog -SVersion)" && \
+        case "${base}" in *+ubuntu*) ;; *) \
+            DEBFULLNAME="FlagOS Contributors" DEBEMAIL="contact@flagos.io" \
+            dch -b -v "${base}${suffix}" -D unstable --force-distribution \
+                "Rebuild for $(. /etc/os-release && echo "${PRETTY_NAME}")." ;; \
+        esac; \
+    fi
 RUN dpkg-buildpackage -us -uc -b -d
 
 RUN install -d /output \

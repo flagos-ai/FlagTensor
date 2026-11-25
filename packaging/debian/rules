@@ -39,9 +39,10 @@ override_dh_auto_install:
 	find debian/tmp/usr/lib -name '*.so*' -type f \
 		-exec patchelf --remove-rpath {} \;
 	@wheel="$$(ls -1 $(WHEEL_DIR)/flagtensor-*.whl | head -1)"; \
+	pip_break="$$(python3 -m pip install --help 2>&1 | grep -q -- --break-system-packages && echo --break-system-packages || true)"; \
 	mkdir -p $(PYDIR); \
 	python3 -m pip install --no-deps --no-compile --no-index \
-		--break-system-packages --target=$(PYDIR) "$$wheel"
+		$$pip_break --target=$(PYDIR) "$$wheel"
 	rm -f $(PYDIR)/flagtensor-*.dist-info/RECORD
 	test -f $(PYDIR)/flagtensor/runtime/backend/_nvidia/tune_configs.yaml
 
