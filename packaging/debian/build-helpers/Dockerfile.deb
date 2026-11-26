@@ -42,15 +42,35 @@ RUN python3 -m pip install --no-cache-dir \
             ${TORCH_PACKAGES})
 
 COPY packaging/debian/local-deps/ /tmp/local-deps/
-RUN if ls /tmp/local-deps/libtriton-jit-nvidia*.deb >/dev/null 2>&1; then \
-        . /etc/os-release; \
-        arch="$(dpkg --print-architecture)"; \
-        set -- /tmp/local-deps/libtriton-jit-nvidia*"+${ID}${VERSION_ID}_${arch}.deb"; \
-        [ -e "$1" ] || set -- /tmp/local-deps/libtriton-jit-nvidia*"_${arch}.deb"; \
-        [ -e "$1" ] || set -- /tmp/local-deps/libtriton-jit-nvidia*.deb; \
-        apt-get update && apt-get install -y "$@"; \
+RUN . /etc/os-release; \
+    arch="$(dpkg --print-architecture)"; \
+    pyver="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"; \
+    rt_deb=""; dev_deb=""; best_ver=""; \
+    for d in /tmp/local-deps/*.deb; do \
+        [ -f "$d" ] || continue; \
+        [ "$(dpkg-deb -f "$d" Package 2>/dev/null || true)" = "libtriton-jit-nvidia" ] || continue; \
+        [ "$(dpkg-deb -f "$d" Architecture 2>/dev/null || true)" = "$arch" ] || continue; \
+        ver="$(dpkg-deb -f "$d" Version 2>/dev/null || true)"; \
+        deps="$(dpkg-deb -f "$d" Depends 2>/dev/null || true)"; \
+        case "$ver" in *"+${ID}${VERSION_ID}") ;; *+ubuntu*) continue ;; esac; \
+        case "$deps" in *libpython3.*) case "$deps" in *"libpython${pyver}"*) ;; *) continue ;; esac ;; esac; \
+        paired_dev=""; \
+        for dv in /tmp/local-deps/*.deb; do \
+            [ -f "$dv" ] || continue; \
+            if [ "$(dpkg-deb -f "$dv" Package 2>/dev/null || true)" = "libtriton-jit-nvidia-dev" ] \
+               && [ "$(dpkg-deb -f "$dv" Architecture 2>/dev/null || true)" = "$arch" ] \
+               && [ "$(dpkg-deb -f "$dv" Version 2>/dev/null || true)" = "$ver" ]; then \
+                paired_dev="$dv"; break; \
+            fi; \
+        done; \
+        [ -n "$paired_dev" ] || continue; \
+        if [ -z "$best_ver" ] || dpkg --compare-versions "$ver" gt "$best_ver"; then \
+            rt_deb="$d"; dev_deb="$paired_dev"; best_ver="$ver"; \
+        fi; \
+    done; \
+    if [ -n "$rt_deb" ] && [ -n "$dev_deb" ]; then \
+        apt-get update && apt-get install -y "$rt_deb" "$dev_deb"; \
     else \
-        . /etc/os-release; \
         apt_entry="${FLAGOS_APT:-https://resource.flagos.net/repository/flagos-apt-ubuntu${VERSION_ID} ${VERSION_CODENAME} main}"; \
         install -d -m 0755 /etc/apt/keyrings; \
         curl -fsSL "${FLAGOS_APT_KEY}" -o /etc/apt/keyrings/flagos.asc; \
