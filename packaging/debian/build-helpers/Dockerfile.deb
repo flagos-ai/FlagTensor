@@ -34,11 +34,12 @@ RUN . /etc/os-release \
 RUN python3 -m pip install --no-cache-dir \
         "build" "cmake>=3.25,<4.0" "pybind11==3.0.3" \
         "setuptools>=64" "wheel" \
-    && python3 -m pip install --no-cache-dir \
-        --index-url "${TORCH_INDEX}" \
-        --extra-index-url https://download.pytorch.org/whl/cu128 \
-        --extra-index-url https://pypi.org/simple \
-        ${TORCH_PACKAGES}
+    && (python3 -m pip install --no-cache-dir --index-url "${TORCH_INDEX}" ${TORCH_PACKAGES} \
+        || python3 -m pip install --no-cache-dir \
+            --index-url "${TORCH_INDEX}" \
+            --extra-index-url https://download.pytorch.org/whl/cu128 \
+            --extra-index-url https://pypi.org/simple \
+            ${TORCH_PACKAGES})
 
 COPY packaging/debian/local-deps/ /tmp/local-deps/
 RUN if ls /tmp/local-deps/libtriton-jit-nvidia*.deb >/dev/null 2>&1; then \
@@ -64,11 +65,12 @@ RUN cp -r packaging/debian debian && \
     else suffix="${DEB_VERSION_SUFFIX}"; fi && \
     if [ -n "${suffix}" ]; then \
         base="$(dpkg-parsechangelog -l debian/changelog -SVersion)" && \
-        case "${base}" in *+ubuntu*) ;; *) \
+        clean_base="${base%+ubuntu*}" && \
+        if [ "${base}" != "${clean_base}${suffix}" ]; then \
             DEBFULLNAME="FlagOS Contributors" DEBEMAIL="contact@flagos.io" \
-            dch -b -v "${base}${suffix}" -D unstable --force-distribution \
-                "Rebuild for $(. /etc/os-release && echo "${PRETTY_NAME}")." ;; \
-        esac; \
+            dch -b -v "${clean_base}${suffix}" -D unstable --force-distribution \
+                "Rebuild for $(. /etc/os-release && echo "${PRETTY_NAME}")." ; \
+        fi; \
     fi
 RUN dpkg-buildpackage -us -uc -b -d
 
