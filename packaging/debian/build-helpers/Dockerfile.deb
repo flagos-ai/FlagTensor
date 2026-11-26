@@ -43,7 +43,12 @@ RUN python3 -m pip install --no-cache-dir \
 
 COPY packaging/debian/local-deps/ /tmp/local-deps/
 RUN if ls /tmp/local-deps/libtriton-jit-nvidia*.deb >/dev/null 2>&1; then \
-        apt-get update && apt-get install -y /tmp/local-deps/*.deb; \
+        . /etc/os-release; \
+        arch="$(dpkg --print-architecture)"; \
+        set -- /tmp/local-deps/libtriton-jit-nvidia*"+${ID}${VERSION_ID}_${arch}.deb"; \
+        [ -e "$1" ] || set -- /tmp/local-deps/libtriton-jit-nvidia*"_${arch}.deb"; \
+        [ -e "$1" ] || set -- /tmp/local-deps/libtriton-jit-nvidia*.deb; \
+        apt-get update && apt-get install -y "$@"; \
     else \
         . /etc/os-release; \
         apt_entry="${FLAGOS_APT:-https://resource.flagos.net/repository/flagos-apt-ubuntu${VERSION_ID} ${VERSION_CODENAME} main}"; \
@@ -65,12 +70,12 @@ RUN cp -r packaging/debian debian && \
     else suffix="${DEB_VERSION_SUFFIX}"; fi && \
     if [ -n "${suffix}" ]; then \
         base="$(dpkg-parsechangelog -l debian/changelog -SVersion)" && \
-        clean_base="$(printf '%s' "${base}" | sed -E 's/\+ubuntu[0-9]+\.[0-9]+$//')" && \
-        if [ "${base}" != "${clean_base}${suffix}" ]; then \
+        case "${base}" in *"${suffix}") ;; *) \
+            clean_base="$(printf '%s' "${base}" | sed -E 's/\+ubuntu[0-9]+\.[0-9]+$//')" && \
             DEBFULLNAME="FlagOS Contributors" DEBEMAIL="contact@flagos.io" \
             dch -b -v "${clean_base}${suffix}" -D unstable --force-distribution \
-                "Rebuild for $(. /etc/os-release && echo "${PRETTY_NAME}")." ; \
-        fi; \
+                "Rebuild for $(. /etc/os-release && echo "${PRETTY_NAME}")." ;; \
+        esac; \
     fi
 RUN dpkg-buildpackage -us -uc -b -d
 
