@@ -2,6 +2,10 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
+if [ "$#" -gt 1 ] || [[ "${1:-}" == -* ]]; then
+    echo "Usage: $0 [BASE_IMAGE]" >&2
+    exit 1
+fi
 BASE_IMAGE="${1:-nvidia/cuda:12.8.0-devel-ubuntu24.04}"
 IMAGE_TAG="flagtensor-deb:nvidia"
 OUTPUT_DIR="${PROJECT_DIR}/debian-packages"
