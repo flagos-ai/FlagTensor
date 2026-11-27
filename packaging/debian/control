@@ -36,7 +36,7 @@ Description: FlagTensor Python operators for FlagOS
  selected backend runtime.
 
 Package: libflagtensor-nvidia
-Architecture: amd64
+Architecture: any
 Depends: ${misc:Depends},
          ${shlibs:Depends},
          libtriton-jit-nvidia (>= 0.1.0-3)
@@ -46,7 +46,7 @@ Description: FlagTensor C++ operator runtime (NVIDIA backend)
 
 Package: libflagtensor-nvidia-dev
 Section: libdevel
-Architecture: amd64
+Architecture: any
 Depends: ${misc:Depends},
          libflagtensor-nvidia (= ${binary:Version}),
          libtriton-jit-nvidia-dev (>= 0.1.0-3)
@@ -55,12 +55,12 @@ Description: FlagTensor C++ development files (NVIDIA backend)
 
 Package: python3-flagtensor-nvidia
 Section: python
-Architecture: amd64
+Architecture: any
 Depends: ${misc:Depends},
          ${shlibs:Depends},
          libflagtensor-nvidia (= ${binary:Version}),
          ${python3:Depends},
          python3,
-         python3-flagtensor (= ${binary:Version})
+         python3-flagtensor (= ${source:Version})
 Description: FlagTensor Python C++ extension (NVIDIA backend)
  Python bindings for the native NVIDIA FlagTensor operator runtime.

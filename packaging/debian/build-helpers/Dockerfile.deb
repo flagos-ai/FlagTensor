@@ -1,8 +1,8 @@
 ARG BASE_IMAGE=nvidia/cuda:12.8.0-devel-ubuntu24.04
 FROM ${BASE_IMAGE}
 
-# Builds strictly against the base Ubuntu release's system python3
-# (3.10 on Ubuntu 22.04, 3.12 on Ubuntu 24.04) with no external PPA.
+# Builds strictly against the base distribution's native system python3 with
+# no external PPA.
 ARG DEB_VERSION_SUFFIX=auto
 ARG PYTHON_VERSION=
 ARG TORCH_INDEX=https://resource.flagos.net/repository/flagos-pypi-nvidia/simple
@@ -13,22 +13,16 @@ ARG FLAGOS_APT_KEY=https://resource.flagos.net/repository/apt-keys/pub/flagos-ap
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-RUN . /etc/os-release \
-    && case "${ID}:${VERSION_ID}" in \
-        ubuntu:22.04) expected_py=3.10 ;; \
-        ubuntu:24.04) expected_py=3.12 ;; \
-        *) echo "ERROR: unsupported suite ${ID} ${VERSION_ID}" >&2; exit 1 ;; \
-       esac \
-    && if [ -n "${PYTHON_VERSION}" ] && [ "${PYTHON_VERSION}" != "${expected_py}" ]; then \
-        echo "ERROR: PYTHON_VERSION=${PYTHON_VERSION} conflicts with ${PRETTY_NAME} native Python ${expected_py}" >&2; \
-        exit 1; \
-       fi \
-    && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential ca-certificates curl debhelper devscripts dh-python \
         dpkg-dev fakeroot git libfmt-dev ninja-build nlohmann-json3-dev \
         patchelf python3 python3-dev python3-pip python3-venv \
-    && pyver="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" \
-    && [ "${pyver}" = "${expected_py}" ] \
+    && pyver="$(/usr/bin/python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" \
+    && if [ -n "${PYTHON_VERSION}" ] && [ "${PYTHON_VERSION}" != "${pyver}" ]; then \
+        . /etc/os-release; \
+        echo "ERROR: PYTHON_VERSION=${PYTHON_VERSION} conflicts with ${PRETTY_NAME:-distro} native Python ${pyver}" >&2; \
+        exit 1; \
+       fi \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir \
@@ -41,45 +35,9 @@ RUN python3 -m pip install --no-cache-dir \
             --extra-index-url https://pypi.org/simple \
             ${TORCH_PACKAGES})
 
+COPY packaging/debian/build-helpers/install-triton-jit-deps.sh /tmp/install-triton-jit-deps.sh
 COPY packaging/debian/local-deps/ /tmp/local-deps/
-RUN . /etc/os-release; \
-    arch="$(dpkg --print-architecture)"; \
-    pyver="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"; \
-    rt_deb=""; dev_deb=""; best_ver=""; \
-    for d in /tmp/local-deps/*.deb; do \
-        [ -f "$d" ] || continue; \
-        [ "$(dpkg-deb -f "$d" Package 2>/dev/null || true)" = "libtriton-jit-nvidia" ] || continue; \
-        [ "$(dpkg-deb -f "$d" Architecture 2>/dev/null || true)" = "$arch" ] || continue; \
-        ver="$(dpkg-deb -f "$d" Version 2>/dev/null || true)"; \
-        deps="$(dpkg-deb -f "$d" Depends 2>/dev/null || true)"; \
-        case "$ver" in *"+${ID}${VERSION_ID}") ;; *+ubuntu*) continue ;; esac; \
-        case "$deps" in *libpython3.*) case "$deps" in *"libpython${pyver}"*) ;; *) continue ;; esac ;; esac; \
-        paired_dev=""; \
-        for dv in /tmp/local-deps/*.deb; do \
-            [ -f "$dv" ] || continue; \
-            if [ "$(dpkg-deb -f "$dv" Package 2>/dev/null || true)" = "libtriton-jit-nvidia-dev" ] \
-               && [ "$(dpkg-deb -f "$dv" Architecture 2>/dev/null || true)" = "$arch" ] \
-               && [ "$(dpkg-deb -f "$dv" Version 2>/dev/null || true)" = "$ver" ]; then \
-                paired_dev="$dv"; break; \
-            fi; \
-        done; \
-        [ -n "$paired_dev" ] || continue; \
-        if [ -z "$best_ver" ] || dpkg --compare-versions "$ver" gt "$best_ver"; then \
-            rt_deb="$d"; dev_deb="$paired_dev"; best_ver="$ver"; \
-        fi; \
-    done; \
-    if [ -n "$rt_deb" ] && [ -n "$dev_deb" ]; then \
-        apt-get update && apt-get install -y "$rt_deb" "$dev_deb"; \
-    else \
-        apt_entry="${FLAGOS_APT:-https://resource.flagos.net/repository/flagos-apt-ubuntu${VERSION_ID} ${VERSION_CODENAME} main}"; \
-        install -d -m 0755 /etc/apt/keyrings; \
-        curl -fsSL "${FLAGOS_APT_KEY}" -o /etc/apt/keyrings/flagos.asc; \
-        echo "deb [signed-by=/etc/apt/keyrings/flagos.asc] ${apt_entry}" \
-          > /etc/apt/sources.list.d/flagos.list; \
-        apt-get update; \
-        apt-get install -y libtriton-jit-nvidia-dev; \
-    fi \
-    && rm -rf /var/lib/apt/lists/*
+RUN bash /tmp/install-triton-jit-deps.sh /tmp/local-deps && rm -f /tmp/install-triton-jit-deps.sh
 
 COPY . /workspace/FlagTensor
 WORKDIR /workspace/FlagTensor
@@ -91,7 +49,7 @@ RUN cp -r packaging/debian debian && \
     if [ -n "${suffix}" ]; then \
         base="$(dpkg-parsechangelog -l debian/changelog -SVersion)" && \
         case "${base}" in *"${suffix}") ;; *) \
-            clean_base="$(printf '%s' "${base}" | sed -E 's/\+ubuntu[0-9]+\.[0-9]+$//')" && \
+            clean_base="$(printf '%s' "${base}" | sed -E 's/\+[a-z][a-z0-9.]*$//')" && \
             DEBFULLNAME="FlagOS Contributors" DEBEMAIL="contact@flagos.io" \
             dch -b -v "${clean_base}${suffix}" -D unstable --force-distribution \
                 "Rebuild for $(. /etc/os-release && echo "${PRETTY_NAME}")." ;; \
