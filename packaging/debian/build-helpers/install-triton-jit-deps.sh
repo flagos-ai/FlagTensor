@@ -18,8 +18,8 @@ deb_matches_host() {
     ver="$(dpkg-deb -f "$deb" Version 2>/dev/null || true)"
     deps="$(dpkg-deb -f "$deb" Depends 2>/dev/null || true)"
     case "$ver" in
-        *"$host_suffix") ;;
-        *+[a-z]*) return 1 ;;
+        *"$host_suffix"|*"${host_suffix}+b"[0-9]*) ;;
+        *+[a-z][a-z][a-z][0-9]*) return 1 ;;
     esac
     case "$deps" in
         *libpython3.*)
@@ -62,7 +62,8 @@ main() {
     done
 
     if [ -n "$rt_deb" ] && [ -n "$dev_deb" ]; then
-        apt-get update && apt-get install -y "$rt_deb" "$dev_deb"
+        apt-get update
+        apt-get install -y "$rt_deb" "$dev_deb"
     else
         local apt_entry="${FLAGOS_APT:-https://resource.flagos.net/repository/flagos-apt-${ID}${VERSION_ID} ${VERSION_CODENAME} main}"
         install -d -m 0755 /etc/apt/keyrings
