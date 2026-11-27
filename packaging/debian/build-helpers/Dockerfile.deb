@@ -50,9 +50,17 @@ RUN . /etc/os-release \
             set -- "$@" "$f"; \
         done; \
        fi \
+    && use_local=0 \
     && if [ "$#" -gt 0 ]; then \
         apt-get update \
-        && apt-get install -y "$@" libtriton-jit-nvidia-dev; \
+        && if apt-get -s install "$@" libtriton-jit-nvidia-dev >/dev/null 2>&1; then \
+            use_local=1; \
+           else \
+            echo "WARNING: local-deps incomplete or incompatible with ${ID}${VERSION_ID}; falling back to FlagOS APT" >&2; \
+           fi; \
+       fi \
+    && if [ "${use_local}" -eq 1 ]; then \
+        apt-get install -y "$@" libtriton-jit-nvidia-dev; \
        else \
         install -d -m 0755 /etc/apt/keyrings \
         && curl -fsSL "${FLAGOS_APT_KEY}" -o /etc/apt/keyrings/flagos.asc \
