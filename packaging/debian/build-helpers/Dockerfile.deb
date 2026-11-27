@@ -35,9 +35,33 @@ RUN python3 -m pip install --no-cache-dir \
             --extra-index-url https://pypi.org/simple \
             ${TORCH_PACKAGES})
 
-COPY packaging/debian/build-helpers/install-triton-jit-deps.sh /tmp/install-triton-jit-deps.sh
 COPY packaging/debian/local-deps/ /tmp/local-deps/
-RUN bash /tmp/install-triton-jit-deps.sh /tmp/local-deps && rm -f /tmp/install-triton-jit-deps.sh
+RUN . /etc/os-release \
+    && arch="$(dpkg --print-architecture)" \
+    && set -- \
+    && for f in /tmp/local-deps/libtriton-jit-nvidia*"+${ID}${VERSION_ID}_${arch}.deb" \
+                /tmp/local-deps/libtriton-jit-nvidia*"+${ID}${VERSION_ID}+b"*_"${arch}.deb"; do \
+        if [ -f "$f" ]; then set -- "$@" "$f"; fi; \
+       done \
+    && if [ "$#" -eq 0 ]; then \
+        for f in /tmp/local-deps/libtriton-jit-nvidia*_"${arch}.deb"; do \
+            if [ ! -f "$f" ]; then continue; fi; \
+            if printf '%s\n' "$f" | grep -Eq '\+[a-z]{3,}[0-9][a-z0-9.]*(\+b[0-9]+)?_[^_]+\.deb$'; then continue; fi; \
+            set -- "$@" "$f"; \
+        done; \
+       fi \
+    && if [ "$#" -gt 0 ]; then \
+        apt-get update \
+        && apt-get install -y "$@" libtriton-jit-nvidia-dev; \
+       else \
+        install -d -m 0755 /etc/apt/keyrings \
+        && curl -fsSL "${FLAGOS_APT_KEY}" -o /etc/apt/keyrings/flagos.asc \
+        && echo "deb [signed-by=/etc/apt/keyrings/flagos.asc] ${FLAGOS_APT:-https://resource.flagos.net/repository/flagos-apt-${ID}${VERSION_ID} ${VERSION_CODENAME} main}" \
+            > /etc/apt/sources.list.d/flagos.list \
+        && apt-get update \
+        && apt-get install -y libtriton-jit-nvidia-dev; \
+       fi \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY . /workspace/FlagTensor
 WORKDIR /workspace/FlagTensor
