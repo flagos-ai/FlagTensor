@@ -14,13 +14,13 @@ deb_matches_host() {
     [ "$(dpkg-deb -f "$deb" Package 2>/dev/null || true)" = "libtriton-jit-nvidia" ] || return 1
     [ "$(dpkg-deb -f "$deb" Architecture 2>/dev/null || true)" = "$host_arch" ] || return 1
 
-    local ver deps
+    local ver deps pkg_suffix
     ver="$(dpkg-deb -f "$deb" Version 2>/dev/null || true)"
     deps="$(dpkg-deb -f "$deb" Depends 2>/dev/null || true)"
-    case "$ver" in
-        *"$host_suffix"|*"${host_suffix}+b"[0-9]*) ;;
-        *+[a-z][a-z][a-z][0-9]*) return 1 ;;
-    esac
+    pkg_suffix="$(printf '%s' "$ver" | sed -nE 's/.*(\+[a-z]{3,}[0-9][a-z0-9.]*)(\+b[0-9]+)?$/\1/p')"
+    if [ -n "$pkg_suffix" ] && [ "$pkg_suffix" != "$host_suffix" ]; then
+        return 1
+    fi
     case "$deps" in
         *libpython3.*)
             case "$deps" in *"libpython${pyver}"*) ;; *) return 1 ;; esac ;;
