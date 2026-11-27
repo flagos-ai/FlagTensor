@@ -33,20 +33,15 @@ if SRC not in sys.path:
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from flagtensor_registry import load_operator_registry
 from benchmark import consts
-from flagtensor.runtime import (
-    device as _runtime_device,
-    device_str as _runtime_device_str,
-    empty_cache as _runtime_empty_cache,
-    is_accelerator_available as _runtime_is_accelerator_available,
-)
+from flagtensor import runtime
+from flagtensor_registry import load_operator_registry
 
 # ---------------------------------------------------------------------------
 # Re-export device info for test files
 # ---------------------------------------------------------------------------
-device_name = _runtime_device_str
-vendor_name = _runtime_device.vendor_name
+device_name = runtime.device_str
+vendor_name = runtime.device.vendor_name
 
 record_logger = logging.getLogger("flagtensor_benchmark")
 record_logger.propagate = False
@@ -54,11 +49,7 @@ record_logger.propagate = False
 # ---------------------------------------------------------------------------
 # Global state
 # ---------------------------------------------------------------------------
-BUILTIN_MARKS = (
-    "parametrize", "skip", "skipif", "xfail", "usefixtures",
-    "filterwarnings", "timeout", "tryfirst", "trylast",
-)
-REGISTERED_MARKS = []
+OPERATOR_MARKS = set()
 TEST_RESULTS = {}
 REPORT_FILE = "benchmark_result.json"
 Config = None  # BenchConfig singleton, set in pytest_configure
@@ -120,7 +111,7 @@ def emit_record_logger(message: str) -> None:
 # ---------------------------------------------------------------------------
 # CLI options
 # ---------------------------------------------------------------------------
-def pytest_addoption(parser):
+def pytest_addoption(parser, pluginmanager):
     # Vendor test runners may register the same options more than once; tolerate it.
     try:
         parser.addoption(
@@ -154,9 +145,7 @@ def pytest_addoption(parser):
         default=consts.DEFAULT_ITER_COUNT,
         help="Number of benchmark iterations",
     )
-    parser.addoption(
-        "--query", action="store_true", default=False, help="Enable query mode"
-    )
+    parser.addoption("--query", action="store_true", default=False, help="Enable query mode")
     parser.addoption(
         "--metrics",
         action="append",
@@ -172,8 +161,7 @@ def pytest_addoption(parser):
         required=False,
         choices=[
             str(ele).split(".")[-1]
-            for ele in consts.FLOAT_DTYPES + consts.INT_DTYPES
-            + consts.BOOL_DTYPES + [torch.cfloat]
+            for ele in consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES + [torch.cfloat]
         ],
         help="Data types for benchmarks",
     )
@@ -208,10 +196,14 @@ def pytest_addoption(parser):
         help="Enable multi-GPU parallel benchmark execution (0=serial)",
     )
     try:
+        # The bare switch may precede a positional test path. Only =FILE consumes a value.
+        args = pluginmanager.get_plugin("pytestconfig").invocation_params.args
+        to_file = any(str(arg).startswith("--collect-marks=") for arg in args)
+        option = {"metavar": "FILE"} if to_file else {"action": "store_const", "const": "-"}
         parser.addoption(
             "--collect-marks",
-            action="store_true",
-            help="Collect test marks without executing",
+            **option,
+            help="Print operator marks without running tests, or write YAML with --collect-marks=FILE",
         )
     except (ValueError, argparse.ArgumentError):
         pass
@@ -221,18 +213,15 @@ def pytest_addoption(parser):
 # Configure
 # ---------------------------------------------------------------------------
 def pytest_configure(config):
-    global Config, REPORT_FILE, REGISTERED_MARKS
+    global Config, REPORT_FILE, OPERATOR_MARKS
 
     Config = BenchConfig()
 
     # Register markers
     config.addinivalue_line("markers", "performance: benchmark performance marker")
-    for spec in load_operator_registry():
-        config.addinivalue_line("markers", f"{spec.benchmark_mark}: benchmark")
-
-    REGISTERED_MARKS = {
-        marker.split(":")[0].strip() for marker in config.getini("markers")
-    }
+    OPERATOR_MARKS = {spec.benchmark_mark for spec in load_operator_registry()}
+    for name in sorted(OPERATOR_MARKS):
+        config.addinivalue_line("markers", f"{name}: benchmark")
 
     Config.mode = consts.BenchMode(config.getoption("--mode"))
     Config.query = config.getoption("--query")
@@ -241,9 +230,7 @@ def pytest_configure(config):
     Config.repetition = int(config.getoption("--iter"))
 
     types_str = config.getoption("--dtypes")
-    Config.user_desired_dtypes = (
-        [getattr(torch, d) for d in types_str] if types_str else types_str
-    )
+    Config.user_desired_dtypes = [getattr(torch, d) for d in types_str] if types_str else types_str
     Config.user_desired_metrics = config.getoption("--metrics")
     Config.shape_file = config.getoption("--shape_file")
     Config.record_log = config.getoption("--record") == "log"
@@ -255,10 +242,7 @@ def pytest_configure(config):
         REPORT_FILE = Config.output
 
     if Config.record_log:
-        cmd_args = [
-            arg.replace(".py", "").replace("=", "_").replace("/", "_")
-            for arg in config.invocation_params.args
-        ]
+        cmd_args = [arg.replace(".py", "").replace("=", "_").replace("/", "_") for arg in config.invocation_params.args]
         log_file = "result_{}.log".format("_".join(cmd_args)).replace("_-", "-")
         for h in list(record_logger.handlers):
             record_logger.removeHandler(h)
@@ -284,15 +268,15 @@ def _bench_setup_once(request):
 @pytest.fixture(scope="function", autouse=True)
 def _bench_clear_function_cache():
     yield
-    if _runtime_is_accelerator_available():
-        _runtime_empty_cache()
+    if runtime.is_accelerator_available():
+        runtime.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _bench_clear_module_cache():
     yield
-    if _runtime_is_accelerator_available():
-        _runtime_empty_cache()
+    if runtime.is_accelerator_available():
+        runtime.empty_cache()
 
 
 @pytest.fixture()
@@ -302,7 +286,7 @@ def extract_and_log_op_attributes(request):
     print("")
     op_attributes = []
     for mark in request.node.iter_markers():
-        if mark.name in BUILTIN_MARKS:
+        if mark.name not in OPERATOR_MARKS:
             continue
         rec = consts.get_recommended_shapes(mark.name, None)
         if rec:
@@ -325,6 +309,10 @@ def extract_and_log_op_attributes(request):
 # ---------------------------------------------------------------------------
 # Hooks
 # ---------------------------------------------------------------------------
+def _operator_marks(item):
+    return [mark.name for mark in item.iter_markers() if mark.name in OPERATOR_MARKS]
+
+
 def _get_reason(report):
     if hasattr(report.longrepr, "reprcrash"):
         return report.longrepr.reprcrash.message
@@ -337,10 +325,7 @@ def _get_reason(report):
 def pytest_runtest_makereport(item, call):
     out = yield
     report = out.get_result()
-    all_marks = [mark.name for mark in item.iter_markers()]
-    # Exclude only builtin marks and "performance" (category marker)
-    excluded = set(BUILTIN_MARKS) | {"performance"}
-    marks = [m for m in all_marks if m not in excluded]
+    marks = _operator_marks(item)
     report.opid = marks[0] if marks else item.nodeid
 
 
@@ -381,7 +366,8 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 
 def pytest_collection_modifyitems(session, config, items):
-    if not config.getoption("--collect-marks", False):
+    target = config.getoption("--collect-marks")
+    if target is None:
         return
     import yaml
 
@@ -394,11 +380,13 @@ def pytest_collection_modifyitems(session, config, items):
         if item.originalname:
             data["function"] = item.originalname
         data["file"] = item.location[0]
-        all_marks = list(item.iter_markers())
-        excluded = set(BUILTIN_MARKS) | set(REGISTERED_MARKS) | {"performance"}
-        op_marks = [mark.name for mark in all_marks if mark.name not in excluded]
-        data["marks"] = op_marks
+        data["marks"] = _operator_marks(item)
         report.append(data)
 
-    print(yaml.dump(report, indent=2))
-    items.clear()
+    if target == "-":
+        print(yaml.safe_dump(report, indent=2))
+    else:
+        with open(target, "w", encoding="utf-8") as stream:
+            yaml.safe_dump(report, stream, indent=2)
+    if not config.option.collectonly:
+        items.clear()
