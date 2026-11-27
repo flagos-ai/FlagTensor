@@ -23,15 +23,29 @@ description = "Triton operators benchmarked against cuTensor baselines"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "torch>=2.2.0,<2.11.0",
-    "triton>=3.3.0,<3.8.0",
-    "matplotlib>=3.4",
-    "openpyxl>=3.0",
+    "torch",
+    "triton",
     "PyYAML>=5.4",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=7.1.0"]
+report = ["matplotlib>=3.4", "openpyxl>=3.0", "numpy"]
+
+# The CUDA 12 benchmark loads libcutensor.so through the image's library path.
+nvidia = ["cutensor-cu12"]
+# These benchmarks use the Torch backend supplied by the accelerator image.
+ascend = []
+hygon = []
+iluvatar = []
+kunlunxin = []
+metax = []
+thead = []
+
+[tool.uv]
+# optest installs from the project root into a prepared accelerator environment.
+# Keep the vendor Torch and Triton modules, including Triton supplied by FlagTree.
+exclude-dependencies = ["torch", "triton"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

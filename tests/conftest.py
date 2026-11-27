@@ -38,11 +38,7 @@ from flagtensor_registry import load_operator_registry
 # ---------------------------------------------------------------------------
 # Global state
 # ---------------------------------------------------------------------------
-BUILTIN_MARKS = {
-    "filterwarnings", "parametrize", "skip", "skipif", "timeout",
-    "tryfirst", "trylast", "usefixtures", "xfail",
-}
-REGISTERED_MARKS = []
+OPERATOR_MARKS = set()
 TEST_RESULTS = {}
 RUNTEST_INFO = {}
 RECORD_LOG = False
@@ -57,7 +53,7 @@ REPORT_FILE = "accuracy_result.json"
 # ---------------------------------------------------------------------------
 # CLI options
 # ---------------------------------------------------------------------------
-def pytest_addoption(parser):
+def pytest_addoption(parser, pluginmanager):
     parser.addoption(
         "--ref",
         action="store",
@@ -87,10 +83,14 @@ def pytest_addoption(parser):
     except ValueError:
         pass
     try:
+        # The bare switch may precede a positional test path. Only =FILE consumes a value.
+        args = pluginmanager.get_plugin("pytestconfig").invocation_params.args
+        to_file = any(str(arg).startswith("--collect-marks=") for arg in args)
+        option = {"metavar": "FILE"} if to_file else {"action": "store_const", "const": "-"}
         parser.addoption(
             "--collect-marks",
-            action="store_true",
-            help="Collect test marks without executing",
+            **option,
+            help="Print operator marks without running tests, or write YAML with --collect-marks=FILE",
         )
     except ValueError:
         pass
@@ -100,18 +100,13 @@ def pytest_addoption(parser):
 # Configure
 # ---------------------------------------------------------------------------
 def pytest_configure(config):
-    global RECORD_LOG, RECORD_JSON, REPORT_FILE, REGISTERED_MARKS
+    global RECORD_LOG, RECORD_JSON, REPORT_FILE, OPERATOR_MARKS
     global RUNTEST_INFO, TO_CPU, QUICK_MODE
 
     # Register operator markers from registry
-    for spec in load_operator_registry():
-        config.addinivalue_line(
-            "markers", f"{spec.correctness_mark}: correctness test"
-        )
-
-    REGISTERED_MARKS = {
-        marker.split(":")[0].strip() for marker in config.getini("markers")
-    }
+    OPERATOR_MARKS = {spec.correctness_mark for spec in load_operator_registry()}
+    for name in sorted(OPERATOR_MARKS):
+        config.addinivalue_line("markers", f"{name}: correctness test")
     RECORD_LOG = config.getoption("--record") == "log"
     RECORD_JSON = config.getoption("--record") == "json"
     TO_CPU = config.getoption("--ref") == "cpu"
@@ -124,10 +119,7 @@ def pytest_configure(config):
 
     if RECORD_LOG:
         RUNTEST_INFO = {}
-        cmd_args = [
-            arg.replace(".py", "").replace("=", "_").replace("/", "_")
-            for arg in config.invocation_params.args
-        ]
+        cmd_args = [arg.replace(".py", "").replace("=", "_").replace("/", "_") for arg in config.invocation_params.args]
         logging.basicConfig(
             filename="result_{}.log".format("_".join(cmd_args)).replace("_-", "-"),
             filemode="w",
@@ -148,9 +140,11 @@ def pytest_runtest_protocol(item, nextitem):
         param_values = request.node.callspec.params
     TEST_RESULTS[item.nodeid]["params"] = param_values
 
-    all_marks = [mark.name for mark in item.iter_markers()]
-    operator_marks = [mark for mark in all_marks if mark not in BUILTIN_MARKS]
-    TEST_RESULTS[item.nodeid]["opname"] = operator_marks
+    TEST_RESULTS[item.nodeid]["opname"] = _operator_marks(item)
+
+
+def _operator_marks(item):
+    return [mark.name for mark in item.iter_markers() if mark.name in OPERATOR_MARKS]
 
 
 def _get_reason(report):
@@ -163,9 +157,7 @@ def _get_reason(report):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
-    result = TEST_RESULTS.setdefault(
-        report.nodeid, {"params": None, "result": None, "opname": None}
-    )
+    result = TEST_RESULTS.setdefault(report.nodeid, {"params": None, "result": None, "opname": None})
     if report.when == "setup":
         if report.outcome == "skipped":
             result["result"] = "skipped"
@@ -182,12 +174,7 @@ def pytest_runtest_teardown(item, nextitem):
     if not RECORD_LOG:
         return
     if hasattr(item, "callspec"):
-        all_marks = list(item.iter_markers())
-        op_marks = [
-            mark.name
-            for mark in all_marks
-            if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
-        ]
+        op_marks = _operator_marks(item)
         if op_marks:
             params = str(item.callspec.params)
             for op_mark in op_marks:
@@ -224,7 +211,8 @@ def pytest_terminal_summary(terminalreporter):
 
 
 def pytest_collection_modifyitems(session, config, items):
-    if not config.getoption("--collect-marks", False):
+    target = config.getoption("--collect-marks")
+    if target is None:
         return
     import yaml
 
@@ -237,14 +225,13 @@ def pytest_collection_modifyitems(session, config, items):
         if item.originalname:
             data["function"] = item.originalname
         data["file"] = item.location[0]
-        all_marks = list(item.iter_markers())
-        op_marks = [
-            mark.name
-            for mark in all_marks
-            if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
-        ]
-        data["marks"] = op_marks
+        data["marks"] = _operator_marks(item)
         report.append(data)
 
-    print(yaml.dump(report, indent=2))
-    items.clear()
+    if target == "-":
+        print(yaml.safe_dump(report, indent=2))
+    else:
+        with open(target, "w", encoding="utf-8") as stream:
+            yaml.safe_dump(report, stream, indent=2)
+    if not config.option.collectonly:
+        items.clear()
